@@ -190,21 +190,30 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
       transactions: transactionStats[0] || { total_transactions: 0, total_earned: 0, total_spent: 0 }
     };
 
-    res.json({ stats });
+    res.json({ 
+      success: true,
+      data: stats 
+    });
 
   } catch (error) {
     logger.error('获取用户统计信息失败:', error);
-    res.status(500).json({ error: '获取用户统计信息失败' });
+    res.status(500).json({ 
+      success: false,
+      message: '获取用户统计信息失败' 
+    });
   }
 });
 
 // 获取用户活动历史
-router.get('/activity', authenticateToken, async (req: AuthRequest, res) => {
+const getUserActivities = async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
     const { limit = 20, offset = 0 } = req.query;
 
     // 获取用户的各种活动记录
+    const limitNum = Number(limit) || 20;
+    const offsetNum = Number(offset) || 0;
+    
     const activities = await query(`
       (SELECT 'company_created' as type, created_at, name as description, id as reference_id
        FROM companies WHERE owner_id = ?)
@@ -215,18 +224,27 @@ router.get('/activity', authenticateToken, async (req: AuthRequest, res) => {
       (SELECT transaction_type as type, created_at, description, id as reference_id
        FROM coin_transactions WHERE user_id = ?)
       UNION ALL
-      (SELECT 'game_released' as type, released_at as created_at, name as description, id as reference_id
-       FROM games WHERE company_id IN (SELECT id FROM companies WHERE owner_id = ?))
+      (SELECT 'game_released' as type, COALESCE(released_at, created_at) as created_at, name as description, id as reference_id
+       FROM games WHERE company_id IN (SELECT id FROM companies WHERE owner_id = ?) AND released_at IS NOT NULL)
       ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `, [userId, userId, userId, userId, parseInt(limit as string), parseInt(offset as string)]);
+      LIMIT ${limitNum} OFFSET ${offsetNum}
+    `, [userId, userId, userId, userId]);
 
-    res.json({ activities });
+    res.json({ 
+      success: true,
+      data: activities 
+    });
 
   } catch (error) {
     logger.error('获取用户活动历史失败:', error);
-    res.status(500).json({ error: '获取用户活动历史失败' });
+    res.status(500).json({ 
+      success: false,
+      message: '获取用户活动历史失败' 
+    });
   }
-});
+};
+
+router.get('/activity', authenticateToken, getUserActivities);
+router.get('/activities', authenticateToken, getUserActivities);
 
 export default router;

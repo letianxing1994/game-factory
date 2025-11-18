@@ -612,16 +612,19 @@ const Companies: React.FC = () => {
     [companiesRes]
   )
 
-  const jobList = useMemo(() => {
   const currentPrimaryGenre = Form.useWatch('primaryGenre', form)
+  
   const availableSubGenres = useMemo(
     () => subGenreOptions[currentPrimaryGenre as string] || [],
     [currentPrimaryGenre]
   )
+  
   const availableHybridOptions = useMemo(
     () => genreOptions.filter((option) => option.value !== currentPrimaryGenre),
     [currentPrimaryGenre]
   )
+
+  const jobList = useMemo(() => {
     return Object.values(jobs).sort((a, b) => {
       const aTime = new Date(a.createdAt || a.updatedAt || '').getTime()
       const bTime = new Date(b.createdAt || b.updatedAt || '').getTime()

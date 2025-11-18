@@ -9,6 +9,7 @@ import {
   TrophyOutlined
 } from '@ant-design/icons'
 import { useQuery } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/api'
 
 interface UserStats {
@@ -26,14 +27,16 @@ interface ActivityItem {
 }
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate()
+  
   // 获取用户统计数据
-  const { data: statsResponse } = useQuery<{ stats: UserStats }>('userStats', () => 
-    apiClient.get<{ stats: UserStats }>('/users/stats')
+  const { data: statsResponse } = useQuery<{ success: boolean; data: any }>('userStats', () => 
+    apiClient.get<{ success: boolean; data: any }>('/users/stats')
   )
 
   // 获取最近活动
-  const { data: activitiesResponse } = useQuery<{ activities: ActivityItem[] }>('recentActivities', () => 
-    apiClient.get<{ activities: ActivityItem[] }>('/users/activities')
+  const { data: activitiesResponse } = useQuery<{ success: boolean; data: ActivityItem[] }>('recentActivities', () => 
+    apiClient.get<{ success: boolean; data: ActivityItem[] }>('/users/activities')
   )
 
   const mockStats: UserStats = {
@@ -64,8 +67,26 @@ const Dashboard: React.FC = () => {
     },
   ]
 
-  const stats = statsResponse?.stats ?? mockStats
-  const activityFeed = activitiesResponse?.activities ?? mockActivities
+  // 从后端API响应中提取数据
+  const apiStats = statsResponse?.success ? statsResponse.data : null
+  const stats: UserStats = apiStats ? {
+    companies: apiStats.companies?.total_companies ?? 0,
+    agents: apiStats.agents?.total ?? 0,
+    balance: apiStats.user?.game_coins ?? 0,
+    reputation: apiStats.user?.reputation ?? 0,
+  } : mockStats
+  
+  // 转换活动数据格式
+  const apiActivities = activitiesResponse?.success && Array.isArray(activitiesResponse.data) 
+    ? activitiesResponse.data.map((item: any) => ({
+        id: item.reference_id,
+        type: item.type,
+        title: item.description || '活动记录',
+        time: item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '未知时间'
+      }))
+    : null
+  
+  const activityFeed = apiActivities ?? mockActivities
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -183,30 +204,30 @@ const Dashboard: React.FC = () => {
       <Card title="快速操作">
         <Row gutter={16}>
           <Col span={6}>
-            <Card hoverable className="text-center cursor-pointer">
+            <Card hoverable className="text-center cursor-pointer" onClick={() => navigate('/companies')}>
               <ShopOutlined className="text-2xl text-blue-500 mb-2" />
               <div className="font-semibold">创建公司</div>
               <div className="text-sm text-gray-500">开始你的游戏开发之旅</div>
             </Card>
           </Col>
           <Col span={6}>
-            <Card hoverable className="text-center cursor-pointer">
+            <Card hoverable className="text-center cursor-pointer" onClick={() => navigate('/agents')}>
               <RobotOutlined className="text-2xl text-green-500 mb-2" />
               <div className="font-semibold">雇佣员工</div>
               <div className="text-sm text-gray-500">招募优秀的开发团队</div>
             </Card>
           </Col>
           <Col span={6}>
-            <Card hoverable className="text-center cursor-pointer">
+            <Card hoverable className="text-center cursor-pointer" onClick={() => navigate('/companies')}>
               <TrophyOutlined className="text-2xl text-yellow-500 mb-2" />
               <div className="font-semibold">发布游戏</div>
               <div className="text-sm text-gray-500">展示你的游戏作品</div>
             </Card>
           </Col>
           <Col span={6}>
-            <Card hoverable className="text-center cursor-pointer">
+            <Card hoverable className="text-center cursor-pointer" onClick={() => navigate('/market')}>
               <RiseOutlined className="text-2xl text-purple-500 mb-2" />
-              <div className="font-semibold">市场分析</div>
+              <div className="font-semibold">市场趋势</div>
               <div className="text-sm text-gray-500">了解行业趋势</div>
             </Card>
           </Col>

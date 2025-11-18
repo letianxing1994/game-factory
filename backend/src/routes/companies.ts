@@ -38,11 +38,11 @@ router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest,
 
     // 检查用户游戏币余额
     const userBalance = await connection.execute(
-      'SELECT balance FROM user_coins WHERE user_id = ?',
+      'SELECT game_coins FROM users WHERE id = ?',
       [userId]
     );
 
-    const currentBalance = userBalance[0][0]?.balance || 0;
+    const currentBalance = userBalance[0][0]?.game_coins || 0;
     
     if (currentBalance < initialCapital) {
       await connection.rollback();
@@ -64,16 +64,17 @@ router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest,
 
     // 扣除用户游戏币
     await connection.execute(
-      'UPDATE user_coins SET balance = balance - ? WHERE user_id = ?',
+      'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
       [initialCapital, userId]
     );
 
     // 记录游戏币交易
+    const balanceAfter = currentBalance - initialCapital;
     await connection.execute(
-      `INSERT INTO coin_transactions (user_id, type, amount, description, 
-        related_entity_type, related_entity_id) 
-       VALUES (?, 'company_creation', -?, '创建公司扣除初始资金', 'company', ?)`,
-      [userId, initialCapital, companyId]
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'spend', ?, ?, '创建公司扣除初始资金', 'company', ?)`,
+      [userId, initialCapital, balanceAfter, companyId]
     );
 
     await connection.commit();
@@ -185,8 +186,8 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
 
     const companies = await query<any[]>(
       `SELECT c.*, 
-        (SELECT COUNT(*) FROM company_employees ce 
-         WHERE ce.company_id = c.id AND ce.status = 'active') as current_employees
+        (SELECT COUNT(*) FROM agents a 
+         WHERE a.company_id = c.id AND a.status = 'employed') as current_employees
        FROM companies c 
        WHERE c.owner_id = ? 
        ORDER BY c.created_at DESC`,
@@ -406,16 +407,18 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
 
     // 返还剩余资金给用户
     await connection.execute(
-      'UPDATE user_coins SET balance = balance + ? WHERE user_id = ?',
+      'UPDATE users SET game_coins = game_coins + ? WHERE id = ?',
       [company.current_capital, userId]
     );
 
     // 记录游戏币交易
+    const userResult = await connection.execute('SELECT game_coins FROM users WHERE id = ?', [userId]);
+    const newBalance = (userResult[0][0]?.game_coins || 0) + company.current_capital;
     await connection.execute(
-      `INSERT INTO coin_transactions (user_id, type, amount, description, 
-        related_entity_type, related_entity_id) 
-       VALUES (?, 'company_dissolution', ?, '公司解散返还剩余资金', 'company', ?)`,
-      [userId, company.current_capital, id]
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'earn', ?, ?, '公司解散返还剩余资金', 'company', ?)`,
+      [userId, company.current_capital, newBalance, id]
     );
 
     await connection.commit();

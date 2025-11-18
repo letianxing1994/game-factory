@@ -186,16 +186,24 @@ const ArtifactPreview: React.FC<{ artifact: NonNullable<AgentPreviewResult['arti
 
 const Agents: React.FC = () => {
   const [previewForm] = Form.useForm<PreviewFormValues>()
+  const [createForm] = Form.useForm()
   const [previewAgent, setPreviewAgent] = useState<EmployeeAgent | null>(null)
   const [previewResult, setPreviewResult] = useState<AgentPreviewResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
 
   const { data: agentsRes, refetch } = useQuery(['agents', 'mine'], async () => {
     const res = await apiClient.get<{ success: boolean; data: EmployeeAgent[] }>('/agents/my')
     return res.data
   })
 
+  const { data: companiesRes } = useQuery(['companies', 'my'], async () => {
+    const res = await apiClient.get<{ success: boolean; data: any[] }>('/companies/my')
+    return res.data
+  })
+
   const agentList = useMemo(() => agentsRes?.data || [], [agentsRes])
+  const myCompanies = useMemo(() => companiesRes?.data || [], [companiesRes])
 
   const currentPrimaryGenre = Form.useWatch('primaryGenre', previewForm)
   const previewSubOptions = useMemo(
@@ -272,6 +280,39 @@ const Agents: React.FC = () => {
     }
   }
 
+  const handleCreateAgent = async (values: any) => {
+    setLoading(true)
+    try {
+      const payload = {
+        name: values.name,
+        type: values.type,
+        specialization: values.specialization,
+        skills: values.skills ? values.skills.split(',').map((s: string) => s.trim()) : [],
+        experience: values.experience || 0,
+        education: values.education || '',
+        traits: values.traits || '',
+        salaryRequirement: values.salaryRequirement,
+        companyId: values.companyId || undefined,
+      }
+      const res = await apiClient.post<{ success: boolean; data: EmployeeAgent }>(
+        '/agents',
+        payload
+      )
+      if (res.success) {
+        message.success(`员工 ${values.name} 创建成功！`)
+        setCreateModalOpen(false)
+        createForm.resetFields()
+        refetch()
+      } else {
+        message.error('创建失败')
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '创建员工失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const columns = [
     { title: '姓名', dataIndex: 'name' },
     {
@@ -317,7 +358,12 @@ const Agents: React.FC = () => {
         <Title level={3} className="!mb-0">
           员工Agent管理
         </Title>
-        <Button onClick={() => refetch()}>刷新</Button>
+        <Space>
+          <Button type="primary" onClick={() => setCreateModalOpen(true)}>
+            创建员工
+          </Button>
+          <Button onClick={() => refetch()}>刷新</Button>
+        </Space>
       </div>
 
       <Card>
@@ -491,6 +537,114 @@ const Agents: React.FC = () => {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="创建员工Agent"
+        open={createModalOpen}
+        onCancel={() => {
+          setCreateModalOpen(false)
+          createForm.resetFields()
+        }}
+        footer={null}
+        width={600}
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" onFinish={handleCreateAgent}>
+          <Form.Item
+            name="name"
+            label="姓名"
+            rules={[{ required: true, message: '请输入员工姓名' }]}
+          >
+            <Input placeholder="例如：张三" />
+          </Form.Item>
+
+          <Form.Item
+            name="type"
+            label="类型"
+            rules={[{ required: true, message: '请选择员工类型' }]}
+          >
+            <Select placeholder="选择员工类型">
+              <Select.Option value="planner">策划</Select.Option>
+              <Select.Option value="artist">美术</Select.Option>
+              <Select.Option value="developer">开发</Select.Option>
+              <Select.Option value="tester">测试</Select.Option>
+              <Select.Option value="operator">运营</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="specialization"
+            label="专长"
+            rules={[{ required: true, message: '请输入专长领域' }]}
+          >
+            <Input placeholder="例如：RPG游戏设计、3D建模、后端开发等" />
+          </Form.Item>
+
+          <Form.Item name="skills" label="技能">
+            <Input placeholder="多个技能用逗号分隔，例如：Unity,C#,Shader" />
+          </Form.Item>
+
+          <Form.Item name="experience" label="经验年限">
+            <Input type="number" placeholder="例如：3" />
+          </Form.Item>
+
+          <Form.Item name="education" label="学历">
+            <Select placeholder="选择学历" allowClear>
+              <Select.Option value="高中">高中</Select.Option>
+              <Select.Option value="大专">大专</Select.Option>
+              <Select.Option value="本科">本科</Select.Option>
+              <Select.Option value="硕士">硕士</Select.Option>
+              <Select.Option value="博士">博士</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="traits" label="特质">
+            <Input placeholder="例如：细心、创新、擅长沟通等" />
+          </Form.Item>
+
+          <Form.Item
+            name="salaryRequirement"
+            label="薪资要求 (游戏币)"
+            rules={[{ required: true, message: '请输入薪资要求' }]}
+          >
+            <Input type="number" placeholder="创建员工需消耗等额游戏币" />
+          </Form.Item>
+
+          <Form.Item name="companyId" label="分配到公司">
+            <Select placeholder="不选择则员工暂不分配" allowClear>
+              {myCompanies.map((company: any) => (
+                <Select.Option key={company.id} value={company.id}>
+                  {company.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Alert
+            type="info"
+            message="提示"
+            description="创建员工需要消耗等同于薪资要求的游戏币。员工可以立即分配到公司，或暂不分配后续发布到市场。"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={loading}>
+                创建员工
+              </Button>
+              <Button
+                onClick={() => {
+                  setCreateModalOpen(false)
+                  createForm.resetFields()
+                }}
+              >
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   )

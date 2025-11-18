@@ -36,45 +36,44 @@ router.get('/listings', async (req, res) => {
 
     let queryStr = `
       SELECT 
-        ml.id as listing_id,
-        ml.price,
-        ml.description as listing_description,
-        ml.created_at as listing_created_at,
-        ea.id as agent_id,
-        ea.name as agent_name,
-        ea.type as agent_type,
-        ea.specialization,
-        ea.skills,
-        ea.experience,
-        ea.education,
-        ea.traits,
+        mt.id as listing_id,
+        mt.price,
+        mt.created_at as listing_created_at,
+        a.id as agent_id,
+        a.name as agent_name,
+        a.type as agent_type,
+        a.specialization,
+        a.skills,
+        a.experience,
+        a.education,
+        a.traits,
         u.id as seller_id,
         u.username as seller_name
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      JOIN users u ON ml.seller_id = u.id
-      WHERE ml.status = 'active'
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      JOIN users u ON mt.seller_id = u.id
+      WHERE mt.status = 'active' AND a.is_on_market = TRUE
     `;
 
     const params: any[] = [];
 
     if (type) {
-      queryStr += ' AND ea.type = ?';
+      queryStr += ' AND a.type = ?';
       params.push(type);
     }
 
     if (specialization) {
-      queryStr += ' AND ea.specialization LIKE ?';
+      queryStr += ' AND a.specialization LIKE ?';
       params.push(`%${specialization}%`);
     }
 
     if (minPrice) {
-      queryStr += ' AND ml.price >= ?';
+      queryStr += ' AND mt.price >= ?';
       params.push(Number(minPrice));
     }
 
     if (maxPrice) {
-      queryStr += ' AND ml.price <= ?';
+      queryStr += ' AND mt.price <= ?';
       params.push(Number(maxPrice));
     }
 
@@ -93,30 +92,30 @@ router.get('/listings', async (req, res) => {
     // 获取总数
     let countQuery = `
       SELECT COUNT(*) as total
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      WHERE ml.status = 'active'
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      WHERE mt.status = 'active' AND a.is_on_market = TRUE
     `;
     
     const countParams: any[] = [];
 
     if (type) {
-      countQuery += ' AND ea.type = ?';
+      countQuery += ' AND a.type = ?';
       countParams.push(type);
     }
 
     if (specialization) {
-      countQuery += ' AND ea.specialization LIKE ?';
+      countQuery += ' AND a.specialization LIKE ?';
       countParams.push(`%${specialization}%`);
     }
 
     if (minPrice) {
-      countQuery += ' AND ml.price >= ?';
+      countQuery += ' AND mt.price >= ?';
       countParams.push(Number(minPrice));
     }
 
     if (maxPrice) {
-      countQuery += ' AND ml.price <= ?';
+      countQuery += ' AND mt.price <= ?';
       countParams.push(Number(maxPrice));
     }
 
@@ -174,26 +173,25 @@ router.get('/listings/:id', async (req, res) => {
 
     const listings = await query(`
       SELECT 
-        ml.id as listing_id,
-        ml.price,
-        ml.description as listing_description,
-        ml.created_at as listing_created_at,
-        ea.id as agent_id,
-        ea.name as agent_name,
-        ea.type as agent_type,
-        ea.specialization,
-        ea.skills,
-        ea.experience,
-        ea.education,
-        ea.traits,
-        ea.salary_requirement,
+        mt.id as listing_id,
+        mt.price,
+        mt.created_at as listing_created_at,
+        a.id as agent_id,
+        a.name as agent_name,
+        a.type as agent_type,
+        a.specialization,
+        a.skills,
+        a.experience,
+        a.education,
+        a.traits,
+        a.salary_cost as salary_requirement,
         u.id as seller_id,
         u.username as seller_name,
         u.reputation as seller_reputation
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      JOIN users u ON ml.seller_id = u.id
-      WHERE ml.id = ? AND ml.status = 'active'
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      JOIN users u ON mt.seller_id = u.id
+      WHERE mt.id = ? AND mt.status = 'active' AND a.is_on_market = TRUE
     `, [id]);
 
     if (listings.length === 0) {
@@ -243,10 +241,10 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
 
     // 获取市场列表信息
     const listingInfo = await connection.execute(`
-      SELECT ml.*, ea.owner_id as seller_id, ea.salary_requirement
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      WHERE ml.id = ? AND ml.status = 'active'
+      SELECT mt.*, a.company_id, a.salary_cost as salary_requirement
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      WHERE mt.id = ? AND mt.status = 'active' AND a.is_on_market = TRUE
     `, [id]);
 
     if (Array.isArray(listingInfo[0]) && listingInfo[0].length === 0) {
@@ -258,9 +256,10 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
     }
 
     const listing = listingInfo[0][0];
+    const sellerId = listing.seller_id;
 
     // 检查是否购买自己的员工
-    if (listing.seller_id === buyerId) {
+    if (sellerId === buyerId) {
       await connection.rollback();
       return res.status(400).json({ 
         success: false, 
@@ -285,7 +284,7 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
 
       // 检查公司是否已满员
       const employeeCount = await connection.execute(
-        'SELECT COUNT(*) as count FROM company_employees WHERE company_id = ? AND status = "active"',
+        'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
         [companyId]
       );
 
@@ -301,11 +300,11 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
 
     // 检查买家游戏币余额
     const buyerBalance = await connection.execute(
-      'SELECT balance FROM user_coins WHERE user_id = ?',
+      'SELECT game_coins FROM users WHERE id = ?',
       [buyerId]
     );
 
-    const currentBalance = buyerBalance[0][0]?.balance || 0;
+    const currentBalance = buyerBalance[0][0]?.game_coins || 0;
     
     if (currentBalance < listing.price) {
       await connection.rollback();
@@ -317,51 +316,45 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
 
     // 扣除买家游戏币
     await connection.execute(
-      'UPDATE user_coins SET balance = balance - ? WHERE user_id = ?',
+      'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
       [listing.price, buyerId]
     );
 
     // 增加卖家游戏币
     await connection.execute(
-      'UPDATE user_coins SET balance = balance + ? WHERE user_id = ?',
-      [listing.price, listing.seller_id]
+      'UPDATE users SET game_coins = game_coins + ? WHERE id = ?',
+      [listing.price, sellerId]
     );
 
-    // 更新市场列表状态
+    // 更新市场交易状态
     await connection.execute(
-      'UPDATE market_listings SET status = "sold", buyer_id = ?, sold_at = NOW() WHERE id = ?',
+      'UPDATE market_transactions SET status = "sold", buyer_id = ?, sold_at = NOW() WHERE id = ?',
       [buyerId, id]
     );
 
-    // 更新员工所有权
+    // 更新员工状态和所有权
     await connection.execute(
-      'UPDATE employee_agents SET owner_id = ?, status = "active", updated_at = NOW() WHERE id = ?',
-      [buyerId, listing.employee_id]
+      'UPDATE agents SET is_on_market = FALSE, status = "employed", company_id = ?, updated_at = NOW() WHERE id = ?',
+      [companyId || null, listing.agent_id]
     );
 
-    // 添加到公司（如果指定了公司）
-    if (companyId) {
-      await connection.execute(
-        `INSERT INTO company_employees (company_id, employee_id, position, salary, status)
-         VALUES (?, ?, (SELECT type FROM employee_agents WHERE id = ?), ?, 'active')`,
-        [companyId, listing.employee_id, listing.employee_id, listing.salary_requirement]
-      );
-    }
-
     // 记录买家游戏币交易
+    const buyerBalanceAfter = currentBalance - listing.price;
     await connection.execute(
-      `INSERT INTO coin_transactions (user_id, type, amount, description, 
-        related_entity_type, related_entity_id) 
-       VALUES (?, 'agent_purchase', -?, '购买员工Agent', 'market_listing', ?)`,
-      [buyerId, listing.price, id]
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'spend', ?, ?, '购买员工Agent', 'agent', ?)`,
+      [buyerId, listing.price, buyerBalanceAfter, listing.agent_id]
     );
 
     // 记录卖家游戏币交易
+    const sellerResult = await connection.execute('SELECT game_coins FROM users WHERE id = ?', [sellerId]);
+    const sellerBalanceAfter = (sellerResult[0][0]?.game_coins || 0) + listing.price;
     await connection.execute(
-      `INSERT INTO coin_transactions (user_id, type, amount, description, 
-        related_entity_type, related_entity_id) 
-       VALUES (?, 'agent_sale', ?, '出售员工Agent', 'market_listing', ?)`,
-      [listing.seller_id, listing.price, id]
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'earn', ?, ?, '出售员工Agent', 'agent', ?)`,
+      [sellerId, listing.price, sellerBalanceAfter, listing.agent_id]
     );
 
     await connection.commit();
@@ -370,8 +363,8 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
     await redisClient.del(`market:listing:${id}`);
     await redisClient.del(`user:${buyerId}:agents`);
     await redisClient.del(`user:${buyerId}:balance`);
-    await redisClient.del(`user:${listing.seller_id}:agents`);
-    await redisClient.del(`user:${listing.seller_id}:balance`);
+    await redisClient.del(`user:${sellerId}:agents`);
+    await redisClient.del(`user:${sellerId}:balance`);
     if (companyId) {
       await redisClient.del(`company:${companyId}:employees`);
     }
@@ -384,8 +377,8 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
           event: 'agent_purchased',
           listingId: id,
           buyerId,
-          sellerId: listing.seller_id,
-          agentId: listing.employee_id,
+          sellerId: sellerId,
+          agentId: listing.agent_id,
           price: listing.price,
           companyId,
           timestamp: new Date().toISOString()
@@ -393,13 +386,13 @@ router.post('/listings/:id/buy', authenticate, async (req: AuthRequest, res) => 
       }]
     });
 
-    logger.info(`用户 ${buyerId} 购买了员工Agent ${listing.employee_id}，价格: ${listing.price}`);
+    logger.info(`用户 ${buyerId} 购买了员工Agent ${listing.agent_id}，价格: ${listing.price}`);
 
     res.json({
       success: true,
       message: '员工Agent购买成功',
       data: {
-        agentId: listing.employee_id,
+        agentId: listing.agent_id,
         price: listing.price,
         companyId
       }
@@ -430,10 +423,10 @@ router.post('/listings/:id/cancel', authenticate, async (req: AuthRequest, res) 
 
     // 检查市场列表所有权
     const listingInfo = await connection.execute(`
-      SELECT ml.*, ea.id as agent_id
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      WHERE ml.id = ? AND ml.seller_id = ? AND ml.status = 'active'
+      SELECT mt.*, mt.agent_id
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      WHERE mt.id = ? AND mt.seller_id = ? AND mt.status = 'active'
     `, [id, userId]);
 
     if (Array.isArray(listingInfo[0]) && listingInfo[0].length === 0) {
@@ -446,15 +439,15 @@ router.post('/listings/:id/cancel', authenticate, async (req: AuthRequest, res) 
 
     const listing = listingInfo[0][0];
 
-    // 更新市场列表状态
+    // 更新市场交易状态
     await connection.execute(
-      'UPDATE market_listings SET status = "cancelled" WHERE id = ?',
+      'UPDATE market_transactions SET status = "cancelled" WHERE id = ?',
       [id]
     );
 
-    // 更新员工状态
+    // 更新agent上架状态
     await connection.execute(
-      'UPDATE employee_agents SET status = "active", updated_at = NOW() WHERE id = ?',
+      'UPDATE agents SET is_on_market = FALSE, updated_at = NOW() WHERE id = ?',
       [listing.agent_id]
     );
 
@@ -513,14 +506,14 @@ router.get('/stats', async (req, res) => {
 
     const stats = await query(`
       SELECT 
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active') as total_active_listings,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'sold' AND sold_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as sold_24h,
-        (SELECT AVG(price) FROM market_listings WHERE status = 'sold' AND sold_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as avg_price_24h,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active' AND employee_id IN (SELECT id FROM employee_agents WHERE type = 'planner')) as planner_listings,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active' AND employee_id IN (SELECT id FROM employee_agents WHERE type = 'artist')) as artist_listings,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active' AND employee_id IN (SELECT id FROM employee_agents WHERE type = 'developer')) as developer_listings,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active' AND employee_id IN (SELECT id FROM employee_agents WHERE type = 'tester')) as tester_listings,
-        (SELECT COUNT(*) FROM market_listings WHERE status = 'active' AND employee_id IN (SELECT id FROM employee_agents WHERE type = 'operator')) as operator_listings
+        (SELECT COUNT(*) FROM market_transactions WHERE status = 'active') as total_active_listings,
+        (SELECT COUNT(*) FROM market_transactions WHERE status = 'sold' AND sold_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as sold_24h,
+        (SELECT AVG(price) FROM market_transactions WHERE status = 'sold' AND sold_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as avg_price_24h,
+        (SELECT COUNT(*) FROM market_transactions mt JOIN agents a ON mt.agent_id = a.id WHERE mt.status = 'active' AND a.type = 'planner') as planner_listings,
+        (SELECT COUNT(*) FROM market_transactions mt JOIN agents a ON mt.agent_id = a.id WHERE mt.status = 'active' AND a.type = 'artist') as artist_listings,
+        (SELECT COUNT(*) FROM market_transactions mt JOIN agents a ON mt.agent_id = a.id WHERE mt.status = 'active' AND a.type = 'developer') as developer_listings,
+        (SELECT COUNT(*) FROM market_transactions mt JOIN agents a ON mt.agent_id = a.id WHERE mt.status = 'active' AND a.type = 'tester') as tester_listings,
+        (SELECT COUNT(*) FROM market_transactions mt JOIN agents a ON mt.agent_id = a.id WHERE mt.status = 'active' AND a.type = 'operator') as operator_listings
     `);
 
     const result = stats[0];
@@ -569,44 +562,43 @@ router.get('/search', async (req, res) => {
 
     let queryStr = `
       SELECT 
-        ml.id as listing_id,
-        ml.price,
-        ml.description as listing_description,
-        ml.created_at as listing_created_at,
-        ea.id as agent_id,
-        ea.name as agent_name,
-        ea.type as agent_type,
-        ea.specialization,
-        ea.skills,
-        ea.experience,
-        ea.education,
-        ea.traits,
+        mt.id as listing_id,
+        mt.price,
+        mt.created_at as listing_created_at,
+        a.id as agent_id,
+        a.name as agent_name,
+        a.type as agent_type,
+        a.specialization,
+        a.skills,
+        a.experience,
+        a.education,
+        a.traits,
         u.id as seller_id,
         u.username as seller_name
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      JOIN users u ON ml.seller_id = u.id
-      WHERE ml.status = 'active' AND (ea.name LIKE ? OR ea.specialization LIKE ?)
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      JOIN users u ON mt.seller_id = u.id
+      WHERE mt.status = 'active' AND a.is_on_market = TRUE AND (a.name LIKE ? OR a.specialization LIKE ?)
     `;
 
     const params: any[] = [searchTerm, searchTerm];
 
     if (type) {
-      queryStr += ' AND ea.type = ?';
+      queryStr += ' AND a.type = ?';
       params.push(type);
     }
 
     if (minExperience) {
-      queryStr += ' AND ea.experience >= ?';
+      queryStr += ' AND a.experience >= ?';
       params.push(Number(minExperience));
     }
 
     if (maxExperience) {
-      queryStr += ' AND ea.experience <= ?';
+      queryStr += ' AND a.experience <= ?';
       params.push(Number(maxExperience));
     }
 
-    queryStr += ' ORDER BY ml.created_at DESC';
+    queryStr += ' ORDER BY mt.created_at DESC';
     queryStr += ' LIMIT ? OFFSET ?';
     params.push(Number(limit), offset);
 
@@ -615,25 +607,25 @@ router.get('/search', async (req, res) => {
     // 获取总数
     let countQuery = `
       SELECT COUNT(*) as total
-      FROM market_listings ml
-      JOIN employee_agents ea ON ml.employee_id = ea.id
-      WHERE ml.status = 'active' AND (ea.name LIKE ? OR ea.specialization LIKE ?)
+      FROM market_transactions mt
+      JOIN agents a ON mt.agent_id = a.id
+      WHERE mt.status = 'active' AND a.is_on_market = TRUE AND (a.name LIKE ? OR a.specialization LIKE ?)
     `;
     
     const countParams: any[] = [searchTerm, searchTerm];
 
     if (type) {
-      countQuery += ' AND ea.type = ?';
+      countQuery += ' AND a.type = ?';
       countParams.push(type);
     }
 
     if (minExperience) {
-      countQuery += ' AND ea.experience >= ?';
+      countQuery += ' AND a.experience >= ?';
       countParams.push(Number(minExperience));
     }
 
     if (maxExperience) {
-      countQuery += ' AND ea.experience <= ?';
+      countQuery += ' AND a.experience <= ?';
       countParams.push(Number(maxExperience));
     }
 

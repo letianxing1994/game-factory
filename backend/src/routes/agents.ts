@@ -69,11 +69,11 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
     // 检查用户游戏币余额（创建员工需要费用）
     const creationCost = salaryRequirement; // 创建成本等于薪资要求
     const userBalance = await connection.execute(
-      'SELECT balance FROM user_coins WHERE user_id = ?',
+      'SELECT game_coins FROM users WHERE id = ?',
       [userId]
     );
 
-    const currentBalance = userBalance[0][0]?.balance || 0;
+    const currentBalance = userBalance[0][0]?.game_coins || 0;
     
     if (currentBalance < creationCost) {
       await connection.rollback();
@@ -85,37 +85,29 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
 
     // 创建员工Agent
     const agentResult = await connection.execute(
-      `INSERT INTO employee_agents (
-        owner_id, name, type, specialization, skills, experience, 
-        education, traits, salary_requirement, status, created_by
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'user')`,
-      [userId, name, type, specialization, JSON.stringify(skills), experience, 
-       education, JSON.stringify(traits), salaryRequirement]
+      `INSERT INTO agents (
+        owner_id, name, type, specialization, skills, experience_level, 
+        education, company_id, salary_cost, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available')`,
+      [userId, name, type, specialization, JSON.stringify(skills), experience || 1, 
+       education, companyId || null, salaryRequirement]
     );
 
     const agentId = (agentResult[0] as any).insertId;
 
-    // 如果指定了公司，添加到公司
-    if (companyId) {
-      await connection.execute(
-        `INSERT INTO company_employees (company_id, employee_id, position, salary, status)
-         VALUES (?, ?, ?, ?, 'active')`,
-        [companyId, agentId, type, salaryRequirement]
-      );
-    }
-
     // 扣除用户游戏币
     await connection.execute(
-      'UPDATE user_coins SET balance = balance - ? WHERE user_id = ?',
+      'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
       [creationCost, userId]
     );
 
     // 记录游戏币交易
+    const balanceAfter = currentBalance - creationCost;
     await connection.execute(
-      `INSERT INTO coin_transactions (user_id, type, amount, description, 
-        related_entity_type, related_entity_id) 
-       VALUES (?, 'agent_creation', -?, '创建员工Agent', 'employee_agent', ?)`,
-      [userId, creationCost, agentId]
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'spend', ?, ?, '创建员工Agent', 'agent', ?)`,
+      [userId, creationCost, balanceAfter, agentId]
     );
 
     await connection.commit();
@@ -193,26 +185,25 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
     }
 
     let queryStr = `
-      SELECT ea.*, c.name as company_name, ce.company_id
-      FROM employee_agents ea
-      LEFT JOIN company_employees ce ON ea.id = ce.employee_id AND ce.status = 'active'
-      LEFT JOIN companies c ON ce.company_id = c.id
-      WHERE ea.owner_id = ?
+      SELECT a.*, c.name as company_name
+      FROM agents a
+      LEFT JOIN companies c ON a.company_id = c.id
+      WHERE a.owner_id = ?
     `;
     
     const params: any[] = [userId];
 
     if (status !== 'all') {
-      queryStr += ' AND ea.status = ?';
+      queryStr += ' AND a.status = ?';
       params.push(status);
     }
 
     if (type) {
-      queryStr += ' AND ea.type = ?';
+      queryStr += ' AND a.type = ?';
       params.push(type);
     }
 
-    queryStr += ' ORDER BY ea.created_at DESC';
+    queryStr += ' ORDER BY a.created_at DESC';
 
     const agents = await query(queryStr, params);
 
@@ -265,11 +256,10 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     }
 
     const agents = await query(
-      `SELECT ea.*, c.name as company_name, ce.company_id, ce.position, ce.salary
-       FROM employee_agents ea
-       LEFT JOIN company_employees ce ON ea.id = ce.employee_id AND ce.status = 'active'
-       LEFT JOIN companies c ON ce.company_id = c.id
-       WHERE ea.id = ?`,
+      `SELECT a.*, c.name as company_name
+       FROM agents a
+       LEFT JOIN companies c ON a.company_id = c.id
+       WHERE a.id = ?`,
       [id]
     );
 
@@ -323,7 +313,7 @@ router.put('/:id', authenticate, validateAgentUpdate, async (req: AuthRequest, r
 
     // 检查员工所有权
     const ownership = await query(
-      'SELECT id FROM employee_agents WHERE id = ? AND owner_id = ? AND status = "active"',
+      'SELECT id FROM agents WHERE id = ? AND owner_id = ?',
       [id, userId]
     );
 
@@ -335,11 +325,11 @@ router.put('/:id', authenticate, validateAgentUpdate, async (req: AuthRequest, r
     }
 
     const result = await query(
-      `UPDATE employee_agents 
-       SET name = ?, specialization = ?, skills = ?, traits = ?, 
-           salary_requirement = ?, updated_at = NOW()
+      `UPDATE agents 
+       SET name = ?, specialization = ?, skills = ?, 
+           salary_cost = ?, updated_at = NOW()
        WHERE id = ?`,
-      [name, specialization, JSON.stringify(skills), JSON.stringify(traits), 
+      [name, specialization, JSON.stringify(skills), 
        salaryRequirement, id]
     );
 
@@ -398,7 +388,7 @@ router.post('/:id/fire', authenticate, async (req: AuthRequest, res) => {
 
     // 检查员工所有权
     const agentInfo = await connection.execute(
-      'SELECT * FROM employee_agents WHERE id = ? AND owner_id = ? AND status = "active"',
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
       [id, userId]
     );
 
@@ -410,15 +400,9 @@ router.post('/:id/fire', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // 解雇员工
+    // 解雇员工 - 设置为可用状态并移除公司关联
     await connection.execute(
-      'UPDATE employee_agents SET status = "fired", updated_at = NOW() WHERE id = ?',
-      [id]
-    );
-
-    // 从公司中移除
-    await connection.execute(
-      'UPDATE company_employees SET status = "inactive", end_date = NOW() WHERE employee_id = ? AND status = "active"',
+      'UPDATE agents SET status = "available", company_id = NULL, updated_at = NOW() WHERE id = ?',
       [id]
     );
 
@@ -474,7 +458,7 @@ router.post('/:id/sell', authenticate, async (req: AuthRequest, res) => {
 
     // 检查员工所有权
     const agentInfo = await connection.execute(
-      'SELECT * FROM employee_agents WHERE id = ? AND owner_id = ? AND status = "active"',
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
       [id, userId]
     );
 
@@ -488,7 +472,7 @@ router.post('/:id/sell', authenticate, async (req: AuthRequest, res) => {
 
     // 检查是否已在市场中
     const existingMarket = await connection.execute(
-      'SELECT id FROM market_listings WHERE employee_id = ? AND status = "active"',
+      'SELECT id FROM market_transactions WHERE agent_id = ? AND status = "active"',
       [id]
     );
 
@@ -500,23 +484,17 @@ router.post('/:id/sell', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // 从公司中移除（如果在公司中）
+    // 创建市场交易
     await connection.execute(
-      'UPDATE company_employees SET status = "inactive", end_date = NOW() WHERE employee_id = ? AND status = "active"',
-      [id]
+      `INSERT INTO market_transactions (seller_id, agent_id, price, transaction_type, status)
+       VALUES (?, ?, ?, 'sell', 'active')`,
+      [userId, id, price]
     );
 
-    // 创建市场列表
+    // 更新员工状态为市场中，并移除公司关联
     await connection.execute(
-      `INSERT INTO market_listings (seller_id, employee_id, price, description, status)
-       VALUES (?, ?, ?, ?, 'active')`,
-      [userId, id, price, description]
-    );
-
-    // 更新员工状态
-    await connection.execute(
-      'UPDATE employee_agents SET status = "on_sale", updated_at = NOW() WHERE id = ?',
-      [id]
+      'UPDATE agents SET status = "available", is_on_market = TRUE, market_price = ?, company_id = NULL, updated_at = NOW() WHERE id = ?',
+      [price, id]
     );
 
     await connection.commit();
@@ -565,21 +543,21 @@ router.get('/stats/overview', authenticate, async (req: AuthRequest, res) => {
 
     const stats = await query(
       `SELECT 
-         (SELECT COUNT(*) FROM employee_agents 
-          WHERE owner_id = ? AND status = 'active') as total_agents,
-         (SELECT COUNT(*) FROM employee_agents 
-          WHERE owner_id = ? AND status = 'on_sale') as selling_agents,
-         (SELECT COUNT(*) FROM employee_agents 
-          WHERE owner_id = ? AND status = 'fired') as fired_agents,
-         (SELECT COUNT(*) FROM employee_agents 
+         (SELECT COUNT(*) FROM agents 
+          WHERE owner_id = ?) as total_agents,
+         (SELECT COUNT(*) FROM agents 
+          WHERE owner_id = ? AND is_on_market = TRUE) as selling_agents,
+         (SELECT COUNT(*) FROM agents 
+          WHERE owner_id = ? AND status = 'available') as available_agents,
+         (SELECT COUNT(*) FROM agents 
           WHERE owner_id = ? AND type = 'planner') as planner_agents,
-         (SELECT COUNT(*) FROM employee_agents 
+         (SELECT COUNT(*) FROM agents 
           WHERE owner_id = ? AND type = 'artist') as artist_agents,
-         (SELECT COUNT(*) FROM employee_agents 
+         (SELECT COUNT(*) FROM agents 
           WHERE owner_id = ? AND type = 'developer') as developer_agents,
-         (SELECT COUNT(*) FROM employee_agents 
+         (SELECT COUNT(*) FROM agents 
           WHERE owner_id = ? AND type = 'tester') as tester_agents,
-         (SELECT COUNT(*) FROM employee_agents 
+         (SELECT COUNT(*) FROM agents 
           WHERE owner_id = ? AND type = 'operator') as operator_agents`,
       [userId, userId, userId, userId, userId, userId, userId, userId]
     );
