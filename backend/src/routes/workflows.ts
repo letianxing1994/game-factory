@@ -239,7 +239,9 @@ router.get('/executions/:executionId/events', authenticate, async (req: AuthRequ
 
     req.on('close', () => {
       controller.abort();
-      upstream.body?.destroy();
+      if (upstream.body && 'destroy' in upstream.body) {
+        (upstream.body as any).destroy();
+      }
     });
   } catch (error) {
     controller.abort();

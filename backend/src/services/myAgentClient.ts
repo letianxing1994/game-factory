@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+import fetch, { Response } from 'node-fetch';
 import logger from '../utils/logger';
 import { ExecutionRequestInput, StageConfigInput } from '../types/workflow';
 

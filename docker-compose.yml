@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 4215628@Tim  # 生产环境请使用强密码
+      MYSQL_DATABASE: mydb         # 可选：容器启动时创建的默认数据库
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./Data/mysql_data:/var/lib/mysql  # 挂载MySQL数据目录
+    networks:
+      - my_network
+    command: --default-authentication-plugin=mysql_native_password  # MySQL 8.x可能需要此配置
+    restart: unless-stopped  # 容器退出时自动重启，除非明确停止
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./Data/redis_data:/data  # 挂载Redis数据目录
+    networks:
+      - my_network
+    restart: unless-stopped
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - my_network
+    restart: unless-stopped
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # 连接Zookeeper，使用服务名（因为在一个网络下）
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      # 配置Kafka对外暴露的地址，这里使用宿主机IP或localhost
+      # 注意：在Windows Docker Desktop环境下，通常使用localhost
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_LISTENERS=PLAINTEXT://:9092
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - zookeeper  # 明确依赖关系，确保zookeeper先启动
+    networks:
+      - my_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data: {}  # 声明命名卷（可选），但这里我们使用路径挂载
+  redis_data: {}
+  kafka_data: {}
+
+networks:
+  my_network:
+    driver: bridge
