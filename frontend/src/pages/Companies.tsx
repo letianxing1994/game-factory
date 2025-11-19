@@ -773,14 +773,7 @@ const Companies: React.FC = () => {
           onFinish={handleRunWorkflow}
           initialValues={{
             executionMode: 'sequential',
-            primaryGenre: 'rpg',
-            dimension: '3d',
-            artStyle: 'realistic',
-            gameMode: 'singleplayer',
             cloudProvider: 'aliyun',
-            planningCapabilities: [],
-            planningSystems: [],
-            hybridGenres: [],
           }}
         >
           <Row gutter={16}>
