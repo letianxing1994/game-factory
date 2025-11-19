@@ -1,0 +1,304 @@
+/* 皮卡丘引导组件样式 */
+
+/* 背景遮罩 */
+.pikachu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 9998;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 皮卡丘角色 */
+.pikachu-character {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  cursor: pointer;
+  z-index: 9999;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.pikachu-character.minimized {
+  transform: scale(0.5);
+  animation: bounce 2s ease-in-out infinite;
+}
+
+.pikachu-character.active {
+  transform: scale(1);
+  bottom: 200px;
+  left: 100px;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: scale(0.5) translateY(0); }
+  50% { transform: scale(0.5) translateY(-10px); }
+}
+
+/* 皮卡丘身体 */
+.pikachu-body {
+  width: 120px;
+  height: 120px;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  border-radius: 50% 50% 45% 45%;
+  position: relative;
+  box-shadow: 0 8px 24px rgba(255, 193, 7, 0.6);
+  animation: breathe 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* 耳朵 */
+.pikachu-ear {
+  position: absolute;
+  width: 35px;
+  height: 60px;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  border-radius: 50% 50% 0 0;
+  top: -30px;
+}
+
+.pikachu-ear::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  background: #1a1a1a;
+  border-radius: 50% 50% 0 0;
+}
+
+.pikachu-ear-left {
+  left: 10px;
+  transform: rotate(-20deg);
+}
+
+.pikachu-ear-right {
+  right: 10px;
+  transform: rotate(20deg);
+}
+
+/* 脸部 */
+.pikachu-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 眼睛 */
+.pikachu-eye {
+  position: absolute;
+  width: 12px;
+  height: 16px;
+  background: #1a1a1a;
+  border-radius: 50%;
+  top: 35px;
+  animation: blink 4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 48%, 52%, 100% { height: 16px; }
+  50% { height: 2px; }
+}
+
+.pikachu-eye-left {
+  left: 30px;
+}
+
+.pikachu-eye-right {
+  right: 30px;
+}
+
+/* 腮红 */
+.pikachu-cheek {
+  position: absolute;
+  width: 20px;
+  height: 15px;
+  background: rgba(255, 100, 100, 0.7);
+  border-radius: 50%;
+  top: 55px;
+  animation: blush 3s ease-in-out infinite;
+}
+
+@keyframes blush {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.pikachu-cheek-left {
+  left: 15px;
+}
+
+.pikachu-cheek-right {
+  right: 15px;
+}
+
+/* 嘴巴 */
+.pikachu-mouth {
+  position: absolute;
+  width: 25px;
+  height: 15px;
+  border: 2px solid #1a1a1a;
+  border-top: none;
+  border-radius: 0 0 50% 50%;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* 提示文字 */
+.pikachu-hint {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40, 25, 15, 0.95);
+  color: #fff5e6;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 2px solid rgba(200, 140, 80, 0.6);
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: float 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-5px); }
+}
+
+/* 对话框 */
+.pikachu-dialog {
+  position: fixed;
+  bottom: 200px;
+  left: 250px;
+  z-index: 10000;
+  animation: slideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.pikachu-dialog-content {
+  background: linear-gradient(180deg, rgba(50, 35, 25, 0.98) 0%, rgba(40, 28, 20, 0.99) 100%);
+  border: 3px solid rgba(200, 140, 80, 0.8);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 
+    0 24px 64px rgba(0, 0, 0, 0.8),
+    0 0 40px rgba(255, 180, 100, 0.4),
+    inset 0 1px 0 rgba(255, 200, 120, 0.2);
+  position: relative;
+}
+
+.pikachu-dialog-content::before {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: -80px;
+  width: 0;
+  height: 0;
+  border-left: 20px solid transparent;
+  border-right: 20px solid transparent;
+  border-top: 20px solid rgba(50, 35, 25, 0.98);
+  transform: rotate(-45deg);
+}
+
+/* 消息文本 */
+.pikachu-message {
+  color: #fff5e6;
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  min-height: 60px;
+}
+
+/* 选项按钮 */
+.pikachu-options {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pikachu-option-btn {
+  flex: 1;
+  min-width: 100px;
+  height: 40px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.pikachu-option-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 150, 80, 0.4) !important;
+}
+
+/* 隐藏按钮 */
+.pikachu-hide-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(80, 50, 30, 0.6);
+  color: #e8c468;
+  border: 2px solid rgba(150, 100, 50, 0.4);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pikachu-hide-btn:hover {
+  background: rgba(100, 60, 35, 0.8);
+  border-color: rgba(200, 140, 80, 0.6);
+  transform: scale(1.05);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .pikachu-character.active {
+    left: 50px;
+  }
+
+  .pikachu-dialog {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 150px;
+  }
+
+  .pikachu-dialog-content {
+    min-width: 320px;
+    max-width: 90vw;
+  }
+}

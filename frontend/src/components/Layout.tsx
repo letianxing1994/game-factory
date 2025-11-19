@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Layout as AntLayout, Menu } from 'antd'
 import { 
@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import PikachuGuide from './PikachuGuide'
 
 const { Header, Sider, Content } = AntLayout
 
@@ -19,6 +20,15 @@ const Layout: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
+  const [isFirstLogin, setIsFirstLogin] = useState(false)
+
+  useEffect(() => {
+    // 检查是否是首次登录
+    const loginCount = localStorage.getItem('loginCount')
+    if (!loginCount || loginCount === '1') {
+      setIsFirstLogin(true)
+    }
+  }, [])
 
   const menuItems = [
     {
@@ -63,10 +73,29 @@ const Layout: React.FC = () => {
   }
 
   return (
-    <AntLayout className="min-h-screen">
-      <Sider width={200} className="bg-white shadow-lg">
-        <div className="h-16 flex items-center justify-center border-b border-gray-200">
-          <h1 className="text-xl font-bold text-gray-800">游戏工厂</h1>
+    <AntLayout className="min-h-screen" style={{ minHeight: '100vh' }}>
+      <Sider 
+        width={280} 
+        style={{ 
+          minHeight: '100vh',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          overflow: 'auto'
+        }}
+      >
+        <div className="h-20 flex items-center justify-center border-b" style={{
+          background: 'linear-gradient(180deg, rgba(80, 50, 30, 0.95) 0%, rgba(50, 30, 20, 0.98) 100%)',
+          borderBottom: '2px solid rgba(200, 140, 80, 0.5)'
+        }}>
+          <h1 style={{
+            fontSize: '26px',
+            fontWeight: 700,
+            color: '#fff5e6',
+            textShadow: '0 3px 8px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 180, 100, 0.5)',
+            letterSpacing: '0.08em'
+          }}>🎮 游戏工厂</h1>
         </div>
         <Menu
           mode="inline"
@@ -74,28 +103,62 @@ const Layout: React.FC = () => {
           items={menuItems}
           onClick={handleMenuClick}
           className="border-r-0"
+          style={{ 
+            height: 'calc(100vh - 80px)',
+            borderRight: 0,
+            paddingTop: '20px'
+          }}
         />
       </Sider>
-      <AntLayout>
-        <Header className="bg-white shadow-sm px-6 flex items-center justify-between">
-          <div className="text-lg font-semibold text-gray-800">
+      <AntLayout style={{ marginLeft: 280 }}>
+        <Header style={{ 
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          width: '100%',
+          padding: '0 32px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{
+            fontSize: '20px',
+            fontWeight: 600,
+            color: '#fff5e6',
+            textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
+          }}>
             {menuItems.find(item => item.key === location.pathname)?.label || '游戏工厂'}
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-gray-600">欢迎，{user?.username}</span>
+            <span style={{ color: '#e8c468' }}>欢迎，{user?.username}</span>
             <button
               onClick={handleLogout}
-              className="flex items-center space-x-2 text-gray-600 hover:text-gray-800"
+              className="flex items-center space-x-2"
+              style={{ 
+                color: '#e8c468',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px'
+              }}
             >
               <LogoutOutlined />
               <span>退出</span>
             </button>
           </div>
         </Header>
-        <Content className="m-6 p-6 bg-white rounded-lg shadow-sm">
+        <Content style={{ 
+          margin: '24px',
+          padding: '32px',
+          minHeight: 'calc(100vh - 112px)',
+          overflow: 'auto'
+        }}>
           <Outlet />
         </Content>
       </AntLayout>
+      
+      {/* 皮卡丘引导组件 */}
+      <PikachuGuide isFirstLogin={isFirstLogin} />
     </AntLayout>
   )
 }

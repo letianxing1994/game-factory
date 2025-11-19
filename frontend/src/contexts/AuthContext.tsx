@@ -62,6 +62,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(user)
         setToken(token)
         localStorage.setItem('token', token)
+        
+        // 增加登录次数
+        const loginCount = parseInt(localStorage.getItem('loginCount') || '0')
+        localStorage.setItem('loginCount', String(loginCount + 1))
       } else {
         throw new Error(response.data.message || '登录失败')
       }
@@ -78,6 +82,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(user)
         setToken(token)
         localStorage.setItem('token', token)
+        
+        // 首次注册，设置登录次数为1
+        localStorage.setItem('loginCount', '1')
       } else {
         throw new Error(response.data.message || '注册失败')
       }
