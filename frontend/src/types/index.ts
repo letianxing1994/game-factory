@@ -36,19 +36,17 @@ export interface Company {
 export interface EmployeeAgent {
   id: number;
   name: string;
-  type: 'planner' | 'artist' | 'developer' | 'tester' | 'operator';
+  type: 'planner' | 'artist' | 'developer' | 'tester' | 'operator' | 'music';
   dimension?: '2d' | '3d'; // 仅美术类型需要，区分2D/3D美术
   ai_model?: string; // AI模型名称
   specialization: string;
-  skills: string[];
-  experience: number;
-  education: string;
-  traits: string[];
-  salaryRequirement: number;
-  status: 'active' | 'market' | 'working';
-  ownerId: number;
-  createdAt: string;
-  updatedAt: string;
+  extra_traits?: string; // 额外特点
+  status: 'employed' | 'available';
+  owner_id: number;
+  company_id?: number;
+  company_name?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // 市场列表类型
@@ -60,11 +58,10 @@ export interface MarketListing {
   agentId: number;
   agentName: string;
   agentType: string;
+  dimension?: string;
+  ai_model?: string;
   specialization: string;
-  skills: string[];
-  experience: number;
-  education: string;
-  traits: string[];
+  extra_traits?: string;
   sellerId: number;
   sellerName: string;
 }

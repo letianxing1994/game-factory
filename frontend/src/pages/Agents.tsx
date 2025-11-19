@@ -254,15 +254,20 @@ const Agents: React.FC = () => {
 
   const { data: agentsRes, refetch } = useQuery(['agents', 'mine'], async () => {
     const res = await apiClient.get<{ success: boolean; data: EmployeeAgent[] }>('/agents/my')
-    return res.data
+    console.log('Agents API response:', res)
+    return res
   })
 
   const { data: companiesRes } = useQuery(['companies', 'my'], async () => {
     const res = await apiClient.get<{ success: boolean; data: any[] }>('/companies/my')
-    return res.data
+    return res
   })
 
-  const agentList = useMemo(() => agentsRes?.data || [], [agentsRes])
+  const agentList = useMemo(() => {
+    console.log('agentsRes:', agentsRes)
+    console.log('agentList:', agentsRes?.data || [])
+    return agentsRes?.data || []
+  }, [agentsRes])
   const myCompanies = useMemo(() => companiesRes?.data || [], [companiesRes])
 
   const currentPrimaryGenre = Form.useWatch('primaryGenre', previewForm)
