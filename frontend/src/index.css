@@ -14,29 +14,236 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f5f5f5;
+  /* 游戏风格渐变背景 */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+  min-height: 100vh;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* 自定义滚动条 */
+/* 游戏化卡片样式 */
+.ant-card {
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95) !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 0 0 2px rgba(138, 43, 226, 0.3) !important;
+}
+
+.ant-card-head {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  border-radius: 14px 14px 0 0 !important;
+  border-bottom: none !important;
+  padding: 16px 24px !important;
+}
+
+.ant-card-head-title {
+  color: white !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ant-card-extra {
+  color: white !important;
+}
+
+/* 按钮游戏化 */
+.ant-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6) !important;
+}
+
+.ant-btn {
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Tag游戏化 */
+.ant-tag {
+  border-radius: 12px !important;
+  padding: 4px 12px !important;
+  font-weight: 500 !important;
+  border: 2px solid currentColor !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Modal游戏化 */
+.ant-modal-content {
+  border-radius: 16px !important;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3) !important;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.ant-modal-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border-bottom: none !important;
+  padding: 20px 24px !important;
+}
+
+.ant-modal-title {
+  color: white !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ant-modal-close {
+  color: white !important;
+}
+
+.ant-modal-close:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Table游戏化 */
+.ant-table {
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  border: none !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: rgba(102, 126, 234, 0.05) !important;
+}
+
+/* Input游戏化 */
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-input-textarea {
+  border-radius: 8px !important;
+  border: 2px solid #e0e0e0 !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-input:focus,
+.ant-input-number:focus,
+.ant-select-focused .ant-select-selector,
+.ant-input-textarea:focus {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+}
+
+/* Statistic卡片样式 */
+.ant-statistic {
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.ant-statistic-title {
+  font-weight: 600 !important;
+  color: #667eea !important;
+}
+
+.ant-statistic-content {
+  color: #764ba2 !important;
+  font-weight: 700 !important;
+}
+
+/* Alert游戏化 */
+.ant-alert {
+  border-radius: 12px !important;
+  border: 2px solid currentColor !important;
+  backdrop-filter: blur(5px);
+}
+
+.ant-alert-info {
+  background: rgba(102, 126, 234, 0.1) !important;
+  border-color: #667eea !important;
+}
+
+.ant-alert-success {
+  background: rgba(82, 196, 26, 0.1) !important;
+}
+
+.ant-alert-warning {
+  background: rgba(250, 173, 20, 0.1) !important;
+}
+
+.ant-alert-error {
+  background: rgba(255, 77, 79, 0.1) !important;
+}
+
+/* 自定义滚动条游戏化 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 5px;
+  backdrop-filter: blur(5px);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+/* 添加悬浮动画 */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.ant-btn-primary {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Layout游戏化 */
+.ant-layout {
+  background: transparent !important;
+}
+
+.ant-layout-header {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+  border-bottom: 2px solid rgba(102, 126, 234, 0.2);
 }

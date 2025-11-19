@@ -1,4 +1,4 @@
-# 📦 game-factory 部署指南
+6# 📦 game-factory 部署指南
 
 ## 一、本地开发环境
 

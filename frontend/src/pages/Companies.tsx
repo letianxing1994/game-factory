@@ -8,6 +8,7 @@ import {
   Divider,
   Form,
   Input,
+  InputNumber,
   List,
   Modal,
   Row,
@@ -295,6 +296,10 @@ const Companies: React.FC = () => {
     { refetchInterval: 15000 }
   )
 
+  const selectedCompany = useMemo(() => {
+    return companiesRes?.data?.find(c => c.id === selectedCompanyId)
+  }, [companiesRes, selectedCompanyId])
+
   useEffect(() => {
     if (!selectedCompanyId && companiesRes?.success && companiesRes.data.length > 0) {
       setSelectedCompanyId(companiesRes.data[0].id)
@@ -554,9 +559,9 @@ const Companies: React.FC = () => {
       const res = await apiClient.post<{ success: boolean; data: Company }>('/companies', {
         name: values.name,
         description: values.description,
-        maxEmployees: values.maxEmployees,
-        workflowType: values.workflowType,
-        initialCapital: values.initialCapital,
+        max_employees: values.maxEmployees,
+        workflow_type: values.workflowType,
+        initial_capital: values.initialCapital,
       })
 
       if (res.success) {
@@ -689,56 +694,65 @@ const Companies: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Title level={3} className="!mb-0">
-          公司工作流调度
+        <Title level={2} className="!mb-0" style={{ 
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          fontWeight: 700
+        }}>
+          🏢 游戏工厂 - 公司管理中心
         </Title>
         <Space>
-          <Button type="primary" onClick={() => setCreateCompanyModalVisible(true)}>
-            创建公司
+          <Button type="primary" size="large" onClick={() => setCreateCompanyModalVisible(true)}>
+            ✨ 创建新公司
           </Button>
           <Button
             type="default"
+            size="large"
             disabled={!selectedCompanyId}
             onClick={() => setFundModalVisible(true)}
           >
-            注资
+            💰 注资
           </Button>
           <Select
             value={selectedCompanyId}
             options={companyOptions}
             onChange={setSelectedCompanyId}
-            placeholder="选择公司"
+            placeholder="🏛️ 选择公司"
             style={{ minWidth: 220 }}
+            size="large"
           />
         </Space>
       </div>
 
       <Row gutter={16}>
         <Col xs={24} lg={4}>
-          <Card bordered>
+          <Card bordered style={{ background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.1) 0%, rgba(82, 196, 26, 0.05) 100%)' }}>
             <Statistic
-              title="公司资金"
+              title="💰 公司资金"
               value={companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.currentCapital ?? 0}
               suffix="币"
-              valueStyle={{ color: '#3f8600' }}
+              valueStyle={{ color: '#52c41a', fontWeight: 700, fontSize: '28px' }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={4}>
-          <Card bordered>
+          <Card bordered style={{ background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.1) 0%, rgba(24, 144, 255, 0.05) 100%)' }}>
             <Statistic
-              title="公司员工"
+              title="👥 公司员工"
               value={companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.currentEmployees ?? 0}
               suffix={`/ ${companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.maxEmployees ?? 0}`}
+              valueStyle={{ color: '#1890ff', fontWeight: 700, fontSize: '28px' }}
             />
           </Card>
         </Col>
         <Col xs={24} lg={5}>
-          <Card bordered>
+          <Card bordered style={{ background: 'linear-gradient(135deg, rgba(250, 173, 20, 0.1) 0%, rgba(250, 173, 20, 0.05) 100%)' }}>
             <Statistic
-              title="排队任务"
+              title="📋 排队任务"
               value={capacityRes?.data?.queued ?? 0}
               suffix="个"
+              valueStyle={{ color: '#faad14', fontWeight: 700, fontSize: '28px' }}
             />
           </Card>
         </Col>
@@ -766,76 +780,97 @@ const Companies: React.FC = () => {
         <CompanyEmployeesCard companyId={selectedCompanyId} />
       )}
 
-      <Card title="启动新游戏项目">
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleRunWorkflow}
-          initialValues={{
-            executionMode: 'sequential',
-            cloudProvider: 'aliyun',
-          }}
-        >
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="projectName"
-                label="项目名称"
-                rules={[{ required: true, message: '请输入项目名称' }]}
-              >
-                <Input placeholder="例如：银河战纪" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="executionMode"
-                label="执行模式"
-                initialValue="sequential"
-                rules={[{ required: true }]}
-              >
-                <Select options={executionModes} />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item name="description" label="项目需求描述">
-                <Input.TextArea rows={4} placeholder="描述您想要制作的游戏，例如：一款中世纪魔幻风格的RPG游戏，玩家扮演勇者拯救王国..." />
-              </Form.Item>
-            </Col>
-          </Row>
+      <Card 
+        title={selectedCompany ? `🎮 ${selectedCompany.name} - 启动新项目` : "启动新游戏项目"}
+        extra={selectedCompany && (
+          <Tag color="green">当前公司</Tag>
+        )}
+      >
+        {!selectedCompanyId ? (
           <Alert
-            message="提示：游戏类型、维度、画风等设定已在Agent创建时定义"
-            description="系统会根据您分配的策划、美术、技术等Agent的专业方向自动确定项目参数。如果需要调整，请在Agent管理页面修改Agent属性。"
-            type="info"
+            message="请先创建公司"
+            description="您需要先创建一个游戏开发公司，然后才能启动项目。点击右上角的「创建新公司」按钮开始。"
+            type="warning"
             showIcon
-            style={{ marginBottom: 16 }}
           />
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="cloudProvider"
-                label="云服务商"
-                initialValue="aliyun"
-                rules={[{ required: true }]}
-              >
-                <Select
-                  options={[
-                    { label: '阿里云 OSS', value: 'aliyun' },
-                    { label: 'Google Cloud', value: 'gcp' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label=" ">
-                <Button type="primary" htmlType="submit" block>
-                  提交到生产线
-                </Button>
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
+        ) : (
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleRunWorkflow}
+            initialValues={{
+              executionMode: 'sequential',
+              cloudProvider: 'aliyun',
+            }}
+          >
+            <Alert
+              message={`正在为公司「${selectedCompany?.name}」创建游戏项目`}
+              description="填写项目信息后，将提交到生产线由您的AI员工团队开发"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="projectName"
+                  label="🎯 项目名称"
+                  rules={[{ required: true, message: '请输入项目名称' }]}
+                >
+                  <Input placeholder="例如：银河战纪" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="executionMode"
+                  label="⚙️ 执行模式"
+                  initialValue="sequential"
+                  rules={[{ required: true }]}
+                >
+                  <Select options={executionModes} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24}>
+                <Form.Item name="description" label="📝 项目需求描述">
+                  <Input.TextArea rows={4} placeholder="描述您想要制作的游戏，例如：一款中世纪魔幻风格的RPG游戏，玩家扮演勇者拯救王国..." />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Alert
+              message="💡 智能参数识别"
+              description="系统会根据您分配的策划、美术、技术等Agent的专业方向自动确定项目参数（游戏类型、维度、画风等）。如需调整Agent属性，请前往「员工Agent管理」页面。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="cloudProvider"
+                  label="☁️ 云存储服务"
+                  initialValue="aliyun"
+                  rules={[{ required: true }]}
+                >
+                  <Select
+                    options={[
+                      { label: '阿里云 OSS', value: 'aliyun' },
+                      { label: 'Google Cloud', value: 'gcp' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label=" ">
+                  <Button type="primary" htmlType="submit" block size="large">
+                    🚀 提交到生产线
+                  </Button>
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        )}
       </Card>
 
       <Card
@@ -1090,7 +1125,7 @@ const Companies: React.FC = () => {
             label="最大员工数"
             rules={[{ required: true, message: '请输入最大员工数' }]}
           >
-            <Input type="number" min={1} max={100} />
+            <InputNumber min={1} max={100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name="workflowType"
@@ -1111,7 +1146,7 @@ const Companies: React.FC = () => {
             rules={[{ required: true, message: '请输入初始资金' }]}
             tooltip="将从您的个人账户扣除"
           >
-            <Input type="number" min={100} max={100000} />
+            <InputNumber min={100} max={100000} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>
