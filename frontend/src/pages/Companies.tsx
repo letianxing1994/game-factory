@@ -34,18 +34,7 @@ const { Title, Text } = Typography
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
-const planningCapabilityOptions = [
-  { label: '剧情叙事策划', value: 'narrative' },
-  { label: '数值策划', value: 'numeric' },
-  { label: '关卡策划', value: 'level' },
-]
 
-const planningSystemOptions = [
-  { label: '角色成长系统', value: 'growth' },
-  { label: '装备系统', value: 'equipment' },
-  { label: '社交系统', value: 'social' },
-  { label: '战斗系统', value: 'combat' },
-]
 
 const genreOptions = [
   { label: 'RPG', value: 'rpg' },
@@ -120,7 +109,7 @@ const subGenreOptions: Record<string, { label: string; value: string }[]> = {
     { label: '心理恐怖', value: 'psychological_horror' },
   ],
 }
-const artStyles = ['realistic', 'cartoon', 'pixel', 'anime']
+
 const executionModes = [
   { label: '顺序', value: 'sequential' },
   { label: '异步并行', value: 'async_parallel' },
@@ -260,7 +249,7 @@ const CompanyEmployeesCard: React.FC<CompanyEmployeesCardProps> = ({ companyId }
       const res = await apiClient.get<{ success: boolean; data: any[] }>(
         `/companies/${companyId}/employees`
       )
-      return res.data
+      return res
     },
     { enabled: !!companyId }
   )
@@ -368,7 +357,7 @@ const Companies: React.FC = () => {
 
   const { data: companiesRes } = useQuery(['companies', 'mine'], async () => {
     const res = await apiClient.get<{ success: boolean; data: Company[] }>('/companies/my')
-    return res.data
+    return res
   })
 
   const { data: capacityRes } = useQuery(
@@ -377,7 +366,7 @@ const Companies: React.FC = () => {
       const res = await apiClient.get<{ success: boolean; data: WorkflowCapacity }>(
         '/workflows/capacity'
       )
-      return res.data
+      return res
     },
     { refetchInterval: 15000 }
   )
@@ -753,23 +742,11 @@ const Companies: React.FC = () => {
 
   const companyOptions = useMemo(
     () =>
-      companiesRes?.data?.map((company) => ({
+      companiesRes?.data?.map((company: Company) => ({
         label: company.name,
         value: company.id,
       })) || [],
     [companiesRes]
-  )
-
-  const currentPrimaryGenre = Form.useWatch('primaryGenre', form)
-  
-  const availableSubGenres = useMemo(
-    () => subGenreOptions[currentPrimaryGenre as string] || [],
-    [currentPrimaryGenre]
-  )
-  
-  const availableHybridOptions = useMemo(
-    () => genreOptions.filter((option) => option.value !== currentPrimaryGenre),
-    [currentPrimaryGenre]
   )
 
   const jobList = useMemo(() => {
@@ -817,7 +794,7 @@ const Companies: React.FC = () => {
           <Card bordered>
             <Statistic
               title="公司资金"
-              value={companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_capital ?? 0}
+              value={companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.currentCapital ?? 0}
               suffix="币"
               valueStyle={{ color: '#3f8600' }}
             />
@@ -827,8 +804,8 @@ const Companies: React.FC = () => {
           <Card bordered>
             <Statistic
               title="公司员工"
-              value={companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_employees ?? 0}
-              suffix={`/ ${companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.max_employees ?? 0}`}
+              value={companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.currentEmployees ?? 0}
+              suffix={`/ ${companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.maxEmployees ?? 0}`}
             />
           </Card>
         </Col>
@@ -904,102 +881,21 @@ const Companies: React.FC = () => {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col xs={24} md={8}>
-              <Form.Item name="primaryGenre" label="主类型" rules={[{ required: true }]}>
-                <Select options={genreOptions} placeholder="选择主要类型" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item name="subGenre" label="子类型">
-                <Select
-                  allowClear
-                  placeholder="可选子类型"
-                  options={availableSubGenres}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item name="hybridGenres" label="混合类型">
-                <Select
-                  mode="multiple"
-                  allowClear
-                  placeholder="可组合其他类型（最多2个）"
-                  options={availableHybridOptions}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item
-                name="dimension"
-                label="维度"
-                initialValue="3d"
-                rules={[{ required: true }]}
-              >
-                <Select
-                  options={[
-                    { label: '2D', value: '2d' },
-                    { label: '3D', value: '3d' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item
-                name="artStyle"
-                label="画风"
-                initialValue="realistic"
-                rules={[{ required: true }]}
-              >
-                <Select options={artStyles.map((style) => ({ label: style, value: style }))} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item
-                name="gameMode"
-                label="模式"
-                initialValue="singleplayer"
-                rules={[{ required: true }]}
-              >
-                <Select
-                  options={[
-                    { label: '单机', value: 'singleplayer' },
-                    { label: '联机', value: 'multiplayer' },
-                  ]}
-                />
+            <Col xs={24}>
+              <Form.Item name="description" label="项目需求描述">
+                <Input.TextArea rows={4} placeholder="描述您想要制作的游戏，例如：一款中世纪魔幻风格的RPG游戏，玩家扮演勇者拯救王国..." />
               </Form.Item>
             </Col>
           </Row>
+          <Alert
+            message="提示：游戏类型、维度、画风等设定已在Agent创建时定义"
+            description="系统会根据您分配的策划、美术、技术等Agent的专业方向自动确定项目参数。如果需要调整，请在Agent管理页面修改Agent属性。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item name="description" label="额外需求">
-                <Input.TextArea rows={4} placeholder="NPC、美术风格、关卡偏好等" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="planningCapabilities"
-                label="策划能力偏好"
-                tooltip="指定策划Agent需要具备的能力类型"
-              >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  placeholder="如剧情、数值、关卡"
-                  options={planningCapabilityOptions}
-                />
-              </Form.Item>
-              <Form.Item
-                name="planningSystems"
-                label="系统策划方向"
-                tooltip="针对角色成长、装备、社交、战斗等系统给出重点"
-              >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  placeholder="可多选系统方向"
-                  options={planningSystemOptions}
-                />
-              </Form.Item>
               <Form.Item
                 name="cloudProvider"
                 label="云服务商"
@@ -1013,6 +909,8 @@ const Companies: React.FC = () => {
                   ]}
                 />
               </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
               <Form.Item label=" ">
                 <Button type="primary" htmlType="submit" block>
                   提交到生产线
@@ -1315,7 +1213,7 @@ const Companies: React.FC = () => {
         <Alert
           message="从个人账户向公司账户转账"
           description={`公司当前资金：${
-            companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_capital ?? 0
+            companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)?.currentCapital ?? 0
           } 游戏币`}
           type="info"
           showIcon

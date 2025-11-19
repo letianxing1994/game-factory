@@ -23,6 +23,7 @@ export interface Company {
   name: string;
   description: string;
   maxEmployees: number;
+  currentEmployees: number;
   workflowType: 'agile' | 'waterfall' | 'hybrid';
   initialCapital: number;
   currentCapital: number;

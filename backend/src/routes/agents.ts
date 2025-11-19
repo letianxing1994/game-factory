@@ -182,19 +182,12 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
 
     const agents = await query(queryStr, params);
 
-    // 解析JSON字段
-    const formattedAgents = agents.map(agent => ({
-      ...agent,
-      skills: agent.skills ? JSON.parse(agent.skills) : [],
-      traits: agent.traits ? JSON.parse(agent.traits) : []
-    }));
-
     // 缓存数据
-    await redisClient.setEx(cacheKey, 300, JSON.stringify(formattedAgents)); // 5分钟缓存
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(agents)); // 5分钟缓存
 
     res.json({
       success: true,
-      data: formattedAgents
+      data: agents
     });
 
   } catch (error) {
@@ -255,19 +248,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // 解析JSON字段
-    const formattedAgent = {
-      ...agent,
-      skills: agent.skills ? JSON.parse(agent.skills) : [],
-      traits: agent.traits ? JSON.parse(agent.traits) : []
-    };
-
     // 缓存数据
-    await redisClient.setEx(cacheKey, 300, JSON.stringify(formattedAgent)); // 5分钟缓存
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(agent)); // 5分钟缓存
 
     res.json({
       success: true,
-      data: formattedAgent
+      data: agent
     });
 
   } catch (error) {
