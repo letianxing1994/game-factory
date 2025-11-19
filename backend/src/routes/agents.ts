@@ -84,20 +84,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 
     const agentId = (agentResult[0] as any).insertId;
 
-    // 不再扣除游戏币（移除了薪资成本逻辑）
-    // await connection.execute(
-    //   'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
-      [creationCost, userId]
-    );
-
-    // 记录游戏币交易
-    const balanceAfter = currentBalance - creationCost;
-    await connection.execute(
-      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
-        related_type, related_id) 
-       VALUES (?, 'spend', ?, ?, '创建员工Agent', 'agent', ?)`,
-      // [userId, creationCost, balanceAfter, agentId]
-    // );
+    // 不再扣除游戏币和记录交易（移除了薪资成本逻辑）
 
     await connection.commit();
 
@@ -293,11 +280,11 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 });
 
 // 更新员工Agent信息
-router.put('/:id', authenticate, validateAgentUpdate, async (req: AuthRequest, res) => {
+router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
-    const { name, specialization, skills, traits, salaryRequirement } = req.body;
+    const { name, ai_model, specialization, extra_traits } = req.body;
 
     // 检查员工所有权
     const ownership = await query(
@@ -314,11 +301,11 @@ router.put('/:id', authenticate, validateAgentUpdate, async (req: AuthRequest, r
 
     const result = await query(
       `UPDATE agents 
-       SET name = ?, specialization = ?, skills = ?, 
-           salary_cost = ?, updated_at = NOW()
+       SET name = ?, ai_model = ?, specialization = ?, 
+           extra_traits = ?, updated_at = NOW()
        WHERE id = ?`,
-      [name, specialization, JSON.stringify(skills), 
-       salaryRequirement, id]
+      [name, ai_model || null, specialization, 
+       extra_traits || null, id]
     );
 
     if (result.affectedRows === 0) {
