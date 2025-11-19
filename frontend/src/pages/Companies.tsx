@@ -694,13 +694,18 @@ const Companies: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Title level={2} className="!mb-0" style={{ 
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          fontWeight: 700
+        <Title level={2} className="!mb-0 bg3-title" style={{ 
+          fontFamily: "'Cinzel Decorative', 'Microsoft YaHei', serif",
+          fontSize: '32px',
+          color: '#f5e6d3',
+          textShadow: '0 3px 8px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 180, 100, 0.5), 0 0 40px rgba(255, 120, 50, 0.3)',
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          filter: 'drop-shadow(0 0 15px rgba(255, 150, 80, 0.6))',
+          position: 'relative',
+          display: 'inline-block'
         }}>
-          🏢 游戏工厂 - 公司管理中心
+          🔥 游戏工厂 - 公司管理中心 🔥
         </Title>
         <Space>
           <Button type="primary" size="large" onClick={() => setCreateCompanyModalVisible(true)}>
@@ -1091,9 +1096,10 @@ const Companies: React.FC = () => {
 
       <Modal
         open={createCompanyModalVisible}
-        title="创建公司"
-        okText="创建"
+        title="🏢 创建游戏开发公司"
+        okText="✨ 立即创建"
         cancelText="取消"
+        width={600}
         onOk={() => companyForm.submit()}
         onCancel={() => {
           setCreateCompanyModalVisible(false)
