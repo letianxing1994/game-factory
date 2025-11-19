@@ -18,6 +18,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       type,
       dimension,
       ai_model,
+      ai_model_2d,
+      ai_model_3d,
       specialization,
       extra_traits,
       companyId 
@@ -66,15 +68,17 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     // 创建员工Agent
     const agentResult = await connection.execute(
       `INSERT INTO agents (
-        owner_id, name, type, dimension, ai_model, specialization, 
-        extra_traits, company_id, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        owner_id, name, type, dimension, ai_model, ai_model_2d, ai_model_3d,
+        specialization, extra_traits, company_id, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId, 
         name, 
         type, 
         dimension || null,
-        ai_model || null, 
+        ai_model || null,
+        ai_model_2d || null,
+        ai_model_3d || null,
         specialization, 
         extra_traits || null,
         companyId || null, 
@@ -107,8 +111,11 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       }]
     });
 
-    // 清除相关缓存
-    await redisClient.del(`user:${userId}:agents`);
+    // 清除所有相关缓存（使用通配符模式）
+    const keys = await redisClient.keys(`user:${userId}:agents:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
     if (companyId) {
       await redisClient.del(`company:${companyId}:employees`);
     }
@@ -301,9 +308,12 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // 清除缓存
+    // 清除所有相关缓存
     await redisClient.del(`agent:${id}`);
-    await redisClient.del(`user:${userId}:agents`);
+    const keys = await redisClient.keys(`user:${userId}:agents:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
 
     // 发送Kafka消息
     await kafkaProducer.send({
@@ -333,6 +343,89 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       success: false, 
       message: '更新员工Agent信息失败' 
     });
+  }
+});
+
+// 删除员工Agent
+router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
+  const connection = await getConnection();
+  
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    // 开始事务
+    await connection.beginTransaction();
+
+    // 检查员工所有权
+    const agentInfo = await connection.execute(
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
+      [id, userId]
+    );
+
+    if (Array.isArray(agentInfo[0]) && agentInfo[0].length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: '员工Agent不存在或无权删除' 
+      });
+    }
+
+    const agent = (agentInfo[0] as any[])[0];
+
+    // 如果员工在公司中，需要先从公司移除
+    if (agent.company_id) {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: '请先解雇该员工后再删除' 
+      });
+    }
+
+    // 删除员工
+    await connection.execute(
+      'DELETE FROM agents WHERE id = ?',
+      [id]
+    );
+
+    await connection.commit();
+
+    // 清除所有相关缓存
+    await redisClient.del(`agent:${id}`);
+    const keys = await redisClient.keys(`user:${userId}:agents:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+
+    // 发送Kafka消息
+    await kafkaProducer.send({
+      topic: 'agent-events',
+      messages: [{
+        value: JSON.stringify({
+          event: 'agent_deleted',
+          agentId: id,
+          userId,
+          timestamp: new Date().toISOString()
+        })
+      }]
+    });
+
+    logger.info(`用户 ${userId} 删除了员工Agent ${id}`);
+
+    res.json({
+      success: true,
+      message: '员工Agent删除成功'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    logger.error('删除员工Agent失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '删除员工Agent失败，请稍后重试' 
+    });
+  } finally {
+    connection.release();
   }
 });
 
@@ -369,9 +462,12 @@ router.post('/:id/fire', authenticate, async (req: AuthRequest, res) => {
 
     await connection.commit();
 
-    // 清除缓存
+    // 清除所有相关缓存
     await redisClient.del(`agent:${id}`);
-    await redisClient.del(`user:${userId}:agents`);
+    const keys = await redisClient.keys(`user:${userId}:agents:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
 
     // 发送Kafka消息
     await kafkaProducer.send({
