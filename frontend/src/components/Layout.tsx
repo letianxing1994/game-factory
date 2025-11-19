@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import PikachuGuide from './PikachuGuide'
+import SailorMoonGuide from './SailorMoonGuide'
 
 const { Header, Sider, Content } = AntLayout
 
@@ -106,7 +106,8 @@ const Layout: React.FC = () => {
           style={{ 
             height: 'calc(100vh - 80px)',
             borderRight: 0,
-            paddingTop: '20px'
+            paddingTop: '20px',
+            fontSize: '16px'
           }}
         />
       </Sider>
@@ -157,8 +158,8 @@ const Layout: React.FC = () => {
         </Content>
       </AntLayout>
       
-      {/* 皮卡丘引导组件 */}
-      <PikachuGuide isFirstLogin={isFirstLogin} />
+      {/* 水冰月引导组件 */}
+      <SailorMoonGuide />
     </AntLayout>
   )
 }

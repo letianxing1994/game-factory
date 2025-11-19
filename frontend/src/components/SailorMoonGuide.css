@@ -1,0 +1,519 @@
+/* Sailor Moon Guide Styles */
+
+/* Overlay */
+.sailormoon-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  animation: fadeIn 0.3s ease-in-out;
+  pointer-events: auto;
+}
+
+.overlay-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+/* 高亮元素样式 */
+.guide-highlight {
+  position: relative;
+  z-index: 10001 !important;
+  box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.8), 
+              0 0 20px 8px rgba(255, 193, 7, 0.6),
+              0 0 40px 12px rgba(255, 215, 0, 0.4) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-radius: 8px !important;
+  animation: highlightPulse 2s ease-in-out infinite;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.8), 
+                0 0 20px 8px rgba(255, 193, 7, 0.6),
+                0 0 40px 12px rgba(255, 215, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 215, 0, 1), 
+                0 0 30px 12px rgba(255, 193, 7, 0.8),
+                0 0 60px 16px rgba(255, 215, 0, 0.6);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Character Container */
+.sailormoon-character {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  z-index: 10000;
+  cursor: pointer;
+  transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  transform-origin: center bottom;
+}
+
+.sailormoon-character.minimized {
+  bottom: 20px !important;
+  left: 20px !important;
+  transform: scale(0.5);
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: scale(0.5) translateY(0);
+  }
+  50% {
+    transform: scale(0.5) translateY(-15px);
+  }
+}
+
+/* Sailor Moon Body */
+.sailormoon-body {
+  position: relative;
+  width: 180px;
+  height: 200px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Hair */
+.sailormoon-hair {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.hair-bun {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #FFE135 0%, #FFC300 100%);
+  border-radius: 50%;
+  border: 3px solid #FFD700;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.5);
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+.hair-bun.left {
+  top: 10px;
+  left: 15px;
+}
+
+.hair-bun.right {
+  top: 10px;
+  right: 15px;
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.5);
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(255, 193, 7, 0.8), 0 0 30px rgba(255, 215, 0, 0.6);
+  }
+}
+
+.hair-tail {
+  position: absolute;
+  width: 20px;
+  height: 120px;
+  background: linear-gradient(180deg, #FFE135 0%, #FFC300 100%);
+  border-radius: 10px;
+  animation: sway 3s ease-in-out infinite;
+}
+
+.hair-tail.left {
+  top: 50px;
+  left: -10px;
+  transform: rotate(-20deg);
+  transform-origin: top center;
+}
+
+.hair-tail.right {
+  top: 50px;
+  right: -10px;
+  transform: rotate(20deg);
+  transform-origin: top center;
+}
+
+@keyframes sway {
+  0%, 100% {
+    transform: rotate(-20deg);
+  }
+  50% {
+    transform: rotate(-15deg);
+  }
+}
+
+.hair-tail.right {
+  animation: swayRight 3s ease-in-out infinite;
+}
+
+@keyframes swayRight {
+  0%, 100% {
+    transform: rotate(20deg);
+  }
+  50% {
+    transform: rotate(15deg);
+  }
+}
+
+/* Face */
+.sailormoon-face {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  height: 100px;
+  background: linear-gradient(135deg, #FFE8D6 0%, #FFD4B8 100%);
+  border-radius: 45px 45px 50px 50px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+
+/* Eyes */
+.sailormoon-eye {
+  position: absolute;
+  width: 20px;
+  height: 24px;
+  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  animation: blink 5s infinite;
+}
+
+.sailormoon-eye.left {
+  top: 35px;
+  left: 15px;
+}
+
+.sailormoon-eye.right {
+  top: 35px;
+  right: 15px;
+}
+
+.sailormoon-eye::before {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #000;
+  border-radius: 50%;
+  top: 7px;
+  left: 5px;
+}
+
+.sailormoon-eye::after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: white;
+  border-radius: 50%;
+  top: 8px;
+  left: 8px;
+}
+
+@keyframes blink {
+  0%, 48%, 52%, 100% {
+    height: 24px;
+  }
+  50% {
+    height: 2px;
+  }
+}
+
+/* Mouth */
+.sailormoon-mouth {
+  position: absolute;
+  width: 25px;
+  height: 15px;
+  border: 2px solid #FF69B4;
+  border-top: none;
+  border-radius: 0 0 25px 25px;
+  top: 65px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Moon Mark */
+.moon-mark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #FFD700;
+  border-radius: 50%;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+  animation: moonGlow 2s ease-in-out infinite;
+}
+
+.moon-mark::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #FFF;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+}
+
+@keyframes moonGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 1), 0 0 30px rgba(255, 215, 0, 0.6);
+  }
+}
+
+/* Body Main */
+.sailormoon-body-main {
+  position: absolute;
+  top: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 60px;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F0F0F0 100%);
+  border-radius: 10px;
+  z-index: 4;
+}
+
+/* Sailor Collar */
+.sailor-collar {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 50px solid transparent;
+  border-right: 50px solid transparent;
+  border-bottom: 40px solid #4169E1;
+}
+
+/* Bow */
+.bow {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 20px;
+  background: #FF1493;
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(255, 20, 147, 0.5);
+  animation: bowPulse 2s ease-in-out infinite;
+}
+
+.bow::before,
+.bow::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #FF1493;
+  border-radius: 50%;
+  top: 0;
+}
+
+.bow::before {
+  left: -15px;
+}
+
+.bow::after {
+  right: -15px;
+}
+
+@keyframes bowPulse {
+  0%, 100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.1);
+  }
+}
+
+/* Dialog */
+.sailormoon-dialog {
+  position: absolute;
+  bottom: 220px;
+  left: 0;
+  min-width: 350px;
+  max-width: 450px;
+  background: linear-gradient(135deg, rgba(255, 240, 245, 0.98), rgba(255, 228, 240, 0.98));
+  border: 3px solid #FF69B4;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(255, 105, 180, 0.4), 0 0 0 8px rgba(255, 182, 193, 0.2);
+  animation: slideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 10001;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sailormoon-dialog::before {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: 30px;
+  width: 0;
+  height: 0;
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
+  border-top: 20px solid #FF69B4;
+}
+
+.sailormoon-dialog::after {
+  content: '';
+  position: absolute;
+  bottom: -15px;
+  left: 32px;
+  width: 0;
+  height: 0;
+  border-left: 13px solid transparent;
+  border-right: 13px solid transparent;
+  border-top: 18px solid rgba(255, 240, 245, 0.98);
+}
+
+.sailormoon-dialog-hide {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #FF69B4;
+  border: none;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(255, 105, 180, 0.4);
+}
+
+.sailormoon-dialog-hide:hover {
+  background: #FF1493;
+  transform: rotate(90deg);
+  box-shadow: 0 4px 12px rgba(255, 20, 147, 0.6);
+}
+
+.sailormoon-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.sailormoon-message {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 10px;
+  border: 2px solid rgba(255, 182, 193, 0.5);
+  min-height: 60px;
+}
+
+.sailormoon-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.sailormoon-options button {
+  flex: 1;
+  min-width: 100px;
+  height: 38px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.sailormoon-options button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 105, 180, 0.6) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sailormoon-character {
+    bottom: 20px !important;
+    left: 20px !important;
+  }
+
+  .sailormoon-body {
+    width: 150px;
+    height: 170px;
+  }
+
+  .sailormoon-dialog {
+    min-width: 280px;
+    max-width: 320px;
+    bottom: 190px;
+  }
+
+  .sailormoon-message {
+    font-size: 14px;
+  }
+
+  .sailormoon-options button {
+    min-width: 80px;
+    font-size: 14px;
+  }
+}
+
+/* Ensure character stays in viewport */
+@media (max-height: 600px) {
+  .sailormoon-character {
+    bottom: 10px !important;
+  }
+
+  .sailormoon-dialog {
+    bottom: 160px;
+  }
+}

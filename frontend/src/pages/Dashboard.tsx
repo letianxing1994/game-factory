@@ -102,7 +102,52 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ position: 'relative' }}>
+      {/* 浮动文字 - 上下并排 */}
+      <div style={{
+        position: 'fixed',
+        top: '100px',
+        right: '60px',
+        fontSize: '24px',
+        fontWeight: 700,
+        color: '#FFD76E',
+        textShadow: '0 0 15px rgba(255,193,7,0.8), 0 0 30px rgba(255,215,0,0.6)',
+        animation: 'dashboardFloat1 4s ease-in-out infinite',
+        zIndex: 10,
+        pointerEvents: 'none',
+        letterSpacing: '0.08em'
+      }}>
+        在游戏中感受创造的神奇
+      </div>
+
+      <div style={{
+        position: 'fixed',
+        top: '145px',
+        right: '60px',
+        fontSize: '24px',
+        fontWeight: 700,
+        color: '#FFD76E',
+        textShadow: '0 0 15px rgba(255,193,7,0.8), 0 0 30px rgba(255,215,0,0.6)',
+        animation: 'dashboardFloat2 4s ease-in-out infinite',
+        animationDelay: '2s',
+        zIndex: 10,
+        pointerEvents: 'none',
+        letterSpacing: '0.08em'
+      }}>
+        在创造后体验游戏的乐趣
+      </div>
+
+      <style>{`
+        @keyframes dashboardFloat1 {
+          0%, 100% { transform: translateY(0); opacity: 0.85; }
+          50% { transform: translateY(-12px); opacity: 1; }
+        }
+        @keyframes dashboardFloat2 {
+          0%, 100% { transform: translateY(0); opacity: 1; }
+          50% { transform: translateY(-12px); opacity: 0.85; }
+        }
+      `}</style>
+
       <div className="text-2xl font-bold text-gray-800 mb-6">仪表盘</div>
       
       {/* 统计卡片 */}
