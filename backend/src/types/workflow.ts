@@ -68,6 +68,11 @@ export interface StageConfigInput {
   resources?: StageResource[];
   expectedArtifacts?: Array<{ type: string; format?: string }>;
   planningFocus?: PlanningFocusConfig;
+  agentMeta?: {
+    dimension?: string;
+    specialization?: string;
+    extraTraits?: string;
+  };
 }
 
 export interface ExecutionRequestInput {

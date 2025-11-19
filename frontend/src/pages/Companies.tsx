@@ -143,6 +143,16 @@ interface ClarificationModalState {
   jobId: string
 }
 
+// 公司创建表单接口
+interface CompanyFormValues {
+  name: string
+  description?: string
+  maxEmployees: number
+  workflowType: 'linear' | 'feedback' | 'concurrent'
+  initialCapital: number
+}
+
+// 项目执行表单接口
 interface WorkflowFormValues {
   projectName: string
   primaryGenre: string
@@ -239,11 +249,106 @@ const StageControlModal: React.FC<{
   )
 }
 
+interface CompanyEmployeesCardProps {
+  companyId: number
+}
+
+const CompanyEmployeesCard: React.FC<CompanyEmployeesCardProps> = ({ companyId }) => {
+  const { data: employeesRes, isLoading } = useQuery(
+    ['company', companyId, 'employees'],
+    async () => {
+      const res = await apiClient.get<{ success: boolean; data: any[] }>(
+        `/companies/${companyId}/employees`
+      )
+      return res.data
+    },
+    { enabled: !!companyId }
+  )
+
+  const employees = employeesRes?.data || []
+
+  return (
+    <Card title="公司员工" extra={<Text type="secondary">{employees.length} 名员工</Text>}>
+      {isLoading ? (
+        <Alert message="加载中..." type="info" showIcon />
+      ) : employees.length === 0 ? (
+        <Alert message="暂无员工，请前往员工市场招聘" type="warning" showIcon />
+      ) : (
+        <Table
+          size="small"
+          pagination={false}
+          dataSource={employees}
+          rowKey="id"
+          columns={[
+            {
+              title: '员工ID',
+              dataIndex: 'id',
+              width: 80,
+            },
+            {
+              title: '类型',
+              dataIndex: 'type',
+              width: 100,
+              render: (type: string) => {
+                const typeMap: Record<string, string> = {
+                  planner: '策划',
+                  artist: '美术',
+                  developer: '技术',
+                  tester: '测试',
+                }
+                return <Tag color="blue">{typeMap[type] || type}</Tag>
+              },
+            },
+            {
+              title: '维度',
+              dataIndex: 'dimension',
+              width: 80,
+              render: (dimension: string) =>
+                dimension ? <Tag color={dimension === '3d' ? 'purple' : 'cyan'}>{dimension.toUpperCase()}</Tag> : '--',
+            },
+            {
+              title: 'AI模型',
+              dataIndex: 'ai_model',
+              ellipsis: true,
+            },
+            {
+              title: '技能',
+              dataIndex: 'skills',
+              render: (skills: string | string[]) => {
+                const skillArray = Array.isArray(skills) ? skills : JSON.parse(skills || '[]')
+                return skillArray.slice(0, 3).map((skill: string) => (
+                  <Tag key={skill} style={{ fontSize: '11px' }}>
+                    {skill}
+                  </Tag>
+                ))
+              },
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 80,
+              render: (status: string) => (
+                <Tag color={status === 'employed' ? 'green' : 'default'}>
+                  {status === 'employed' ? '在职' : status}
+                </Tag>
+              ),
+            },
+          ]}
+        />
+      )}
+    </Card>
+  )
+}
+
 const Companies: React.FC = () => {
   const [form] = Form.useForm<WorkflowFormValues>()
+  const [companyForm] = Form.useForm<CompanyFormValues>()
+  const [fundForm] = Form.useForm<{ amount: number }>()
   const [selectedCompanyId, setSelectedCompanyId] = useState<number>()
   const [jobs, setJobs] = useState<Record<string, WorkflowJobState>>({})
   const [loadingQueue, setLoadingQueue] = useState(false)
+  const [createCompanyModalVisible, setCreateCompanyModalVisible] = useState(false)
+  const [fundModalVisible, setFundModalVisible] = useState(false)
   const [controlModal, setControlModal] = useState<StageControlState>({
     visible: false,
     action: 'pause',
@@ -531,6 +636,49 @@ const Companies: React.FC = () => {
     }
   }, [clarificationModal, clarification, clarResponses, loadClarification, refreshJob])
 
+  const handleCreateCompany = async (values: CompanyFormValues) => {
+    try {
+      const res = await apiClient.post<{ success: boolean; data: Company }>('/companies', {
+        name: values.name,
+        description: values.description,
+        maxEmployees: values.maxEmployees,
+        workflowType: values.workflowType,
+        initialCapital: values.initialCapital,
+      })
+
+      if (res.success) {
+        message.success('公司创建成功')
+        setCreateCompanyModalVisible(false)
+        companyForm.resetFields()
+        // 刷新公司列表
+        window.location.reload()
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '创建公司失败')
+    }
+  }
+
+  const handleInjectFunds = async (values: { amount: number }) => {
+    if (!selectedCompanyId) return
+
+    try {
+      const res = await apiClient.post<{ success: boolean }>(
+        `/companies/${selectedCompanyId}/inject-funds`,
+        { amount: values.amount }
+      )
+
+      if (res.success) {
+        message.success(`成功注资 ${values.amount} 游戏币`)
+        setFundModalVisible(false)
+        fundForm.resetFields()
+        // 刷新公司列表
+        window.location.reload()
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '注资失败')
+    }
+  }
+
   const handleRunWorkflow = async (values: WorkflowFormValues) => {
     if (!selectedCompanyId) {
       message.warning('请先创建或选择公司')
@@ -643,17 +791,48 @@ const Companies: React.FC = () => {
         <Title level={3} className="!mb-0">
           公司工作流调度
         </Title>
-        <Select
-          value={selectedCompanyId}
-          options={companyOptions}
-          onChange={setSelectedCompanyId}
-          placeholder="选择公司"
-          style={{ minWidth: 220 }}
-        />
-        </div>
+        <Space>
+          <Button type="primary" onClick={() => setCreateCompanyModalVisible(true)}>
+            创建公司
+          </Button>
+          <Button
+            type="default"
+            disabled={!selectedCompanyId}
+            onClick={() => setFundModalVisible(true)}
+          >
+            注资
+          </Button>
+          <Select
+            value={selectedCompanyId}
+            options={companyOptions}
+            onChange={setSelectedCompanyId}
+            placeholder="选择公司"
+            style={{ minWidth: 220 }}
+          />
+        </Space>
+      </div>
 
       <Row gutter={16}>
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={4}>
+          <Card bordered>
+            <Statistic
+              title="公司资金"
+              value={companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_capital ?? 0}
+              suffix="币"
+              valueStyle={{ color: '#3f8600' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={4}>
+          <Card bordered>
+            <Statistic
+              title="公司员工"
+              value={companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_employees ?? 0}
+              suffix={`/ ${companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.max_employees ?? 0}`}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={5}>
           <Card bordered>
             <Statistic
               title="排队任务"
@@ -662,7 +841,7 @@ const Companies: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={5}>
           <Card bordered>
             <Statistic
               title="运行中"
@@ -671,7 +850,7 @@ const Companies: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={6}>
           <Card bordered>
             <Statistic
               title="平均耗时"
@@ -682,7 +861,11 @@ const Companies: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="运行新的Workflow">
+      {selectedCompanyId && (
+        <CompanyEmployeesCard companyId={selectedCompanyId} />
+      )}
+
+      <Card title="启动新游戏项目">
         <Form
           form={form}
           layout="vertical"
@@ -1054,6 +1237,102 @@ const Companies: React.FC = () => {
         ) : (
           <Alert message="正在加载澄清信息..." type="info" showIcon />
         )}
+      </Modal>
+
+      <Modal
+        open={createCompanyModalVisible}
+        title="创建公司"
+        okText="创建"
+        cancelText="取消"
+        onOk={() => companyForm.submit()}
+        onCancel={() => {
+          setCreateCompanyModalVisible(false)
+          companyForm.resetFields()
+        }}
+      >
+        <Form
+          form={companyForm}
+          layout="vertical"
+          onFinish={handleCreateCompany}
+          initialValues={{
+            maxEmployees: 10,
+            workflowType: 'linear',
+            initialCapital: 1000,
+          }}
+        >
+          <Form.Item
+            name="name"
+            label="公司名称"
+            rules={[{ required: true, message: '请输入公司名称' }]}
+          >
+            <Input placeholder="例如：银河游戏工作室" />
+          </Form.Item>
+          <Form.Item name="description" label="公司简介">
+            <Input.TextArea rows={3} placeholder="简要描述公司定位和目标" />
+          </Form.Item>
+          <Form.Item
+            name="maxEmployees"
+            label="最大员工数"
+            rules={[{ required: true, message: '请输入最大员工数' }]}
+          >
+            <Input type="number" min={1} max={100} />
+          </Form.Item>
+          <Form.Item
+            name="workflowType"
+            label="默认工作流模式"
+            rules={[{ required: true, message: '请选择工作流模式' }]}
+          >
+            <Select
+              options={[
+                { label: '线性流程（顺序执行）', value: 'linear' },
+                { label: '反馈循环（迭代优化）', value: 'feedback' },
+                { label: '并发模式（并行开发）', value: 'concurrent' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="initialCapital"
+            label="初始资金（游戏币）"
+            rules={[{ required: true, message: '请输入初始资金' }]}
+            tooltip="将从您的个人账户扣除"
+          >
+            <Input type="number" min={100} max={100000} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={fundModalVisible}
+        title="向公司注资"
+        okText="确认注资"
+        cancelText="取消"
+        onOk={() => fundForm.submit()}
+        onCancel={() => {
+          setFundModalVisible(false)
+          fundForm.resetFields()
+        }}
+      >
+        <Alert
+          message="从个人账户向公司账户转账"
+          description={`公司当前资金：${
+            companiesRes?.data?.find((c) => c.id === selectedCompanyId)?.current_capital ?? 0
+          } 游戏币`}
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={fundForm} layout="vertical" onFinish={handleInjectFunds}>
+          <Form.Item
+            name="amount"
+            label="注资金额（游戏币）"
+            rules={[
+              { required: true, message: '请输入注资金额' },
+              { type: 'number', min: 1, message: '金额必须大于0' },
+            ]}
+          >
+            <Input type="number" min={1} placeholder="请输入要注入的金额" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   )

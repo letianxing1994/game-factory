@@ -72,21 +72,14 @@ CREATE TABLE company_partners (
 CREATE TABLE agents (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL COMMENT '员工名称',
-    type VARCHAR(20) NOT NULL COMMENT '员工类型：planner-策划，artist-美术，developer-开发，tester-测试，operator-运营',
+    type VARCHAR(20) NOT NULL COMMENT '员工类型：planner-策划，artist-美术，developer-技术，tester-测试，music-音乐',
+    dimension VARCHAR(10) COMMENT '维度：2d或3d（仅美术类型需要）',
     owner_id BIGINT NOT NULL COMMENT '所有者用户ID',
     company_id BIGINT COMMENT '所属公司ID',
-    ai_model VARCHAR(50) DEFAULT 'GPT-5' COMMENT 'AI模型',
-    education VARCHAR(100) COMMENT '教育背景',
-    specialization VARCHAR(100) COMMENT '专业方向',
-    skills JSON COMMENT '技能数组',
-    experience_level INT DEFAULT 1 COMMENT '经验等级：1-10',
-    efficiency_score DECIMAL(3,2) DEFAULT 0.50 COMMENT '效率评分：0.0-1.0',
-    creativity_score DECIMAL(3,2) DEFAULT 0.50 COMMENT '创造力评分：0.0-1.0',
-    teamwork_score DECIMAL(3,2) DEFAULT 0.50 COMMENT '团队协作评分：0.0-1.0',
-    salary_cost DECIMAL(10,2) DEFAULT 1000.00 COMMENT '薪资成本（每月）',
-    status VARCHAR(20) DEFAULT 'available' COMMENT '状态：available-可用，working-工作中，resting-休息中，sold-已出售',
-    is_on_market BOOLEAN DEFAULT FALSE COMMENT '是否在市场上出售',
-    market_price DECIMAL(15,2) COMMENT '市场价格',
+    ai_model VARCHAR(50) COMMENT 'AI模型：DeepSeek-R1, GPT-5, Claude-Sonnet-4.5, DALL-E-3, Meshy-4等（为空时使用配置默认模型）',
+    specialization VARCHAR(100) COMMENT '专业方向：策划=RPG/MOBA/SLG等，美术=realistic/cartoon/pixel等，技术=singleplayer/multiplayer等',
+    extra_traits TEXT COMMENT '额外特点（影响提示词）：如"擅长C++性能优化"、"精通像素艺术风格"等',
+    status VARCHAR(20) DEFAULT 'employed' COMMENT '状态：employed-在职，available-待业',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_id) REFERENCES users(id),
@@ -94,8 +87,7 @@ CREATE TABLE agents (
     INDEX idx_owner_id (owner_id),
     INDEX idx_company_id (company_id),
     INDEX idx_type (type),
-    INDEX idx_status (status),
-    INDEX idx_on_market (is_on_market)
+    INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工Agent表';
 
 -- 游戏项目表

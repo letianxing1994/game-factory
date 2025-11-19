@@ -184,6 +184,65 @@ const ArtifactPreview: React.FC<{ artifact: NonNullable<AgentPreviewResult['arti
   return null
 }
 
+// AI模型选项
+const aiModelOptions = {
+  planner: [
+    { label: 'DeepSeek R1（默认）', value: 'deepseek-r1' },
+    { label: 'GPT-5', value: 'gpt-5' },
+    { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
+  ],
+  artist: [
+    { label: 'DALL-E-3（默认）', value: 'dall-e-3' },
+    { label: 'Midjourney', value: 'midjourney' },
+    { label: 'Stable Diffusion', value: 'stable-diffusion' },
+  ],
+  developer: [
+    { label: 'GPT-5（默认）', value: 'gpt-5' },
+    { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
+    { label: 'Deepseek Coder', value: 'deepseek-coder' },
+  ],
+  tester: [
+    { label: 'Claude Sonnet 4.5（默认）', value: 'claude-sonnet-4.5' },
+    { label: 'GPT-4o', value: 'gpt-4o' },
+  ],
+  music: [
+    { label: 'GPT-4o（默认）', value: 'gpt-4o' },
+    { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
+  ],
+}
+
+// 专业方向选项（根据type不同）
+const specializationOptions = {
+  planner: [
+    { label: 'RPG', value: 'rpg' },
+    { label: 'MOBA', value: 'moba' },
+    { label: 'SLG', value: 'slg' },
+    { label: 'Shooter', value: 'shooter' },
+    { label: 'Casual', value: 'casual' },
+    { label: 'Sandbox', value: 'sandbox' },
+  ],
+  artist: [
+    { label: '写实风格', value: 'realistic' },
+    { label: '卡通风格', value: 'cartoon' },
+    { label: '像素风格', value: 'pixel' },
+    { label: '动漫风格', value: 'anime' },
+  ],
+  developer: [
+    { label: '单机游戏', value: 'singleplayer' },
+    { label: '网络游戏', value: 'multiplayer' },
+  ],
+  tester: [
+    { label: '功能测试', value: 'functional' },
+    { label: '性能测试', value: 'performance' },
+    { label: '安全测试', value: 'security' },
+  ],
+  music: [
+    { label: '管弦乐', value: 'orchestral' },
+    { label: '电子音乐', value: 'electronic' },
+    { label: '环境音', value: 'ambient' },
+  ],
+}
+
 const Agents: React.FC = () => {
   const [previewForm] = Form.useForm<PreviewFormValues>()
   const [createForm] = Form.useForm()
@@ -191,6 +250,7 @@ const Agents: React.FC = () => {
   const [previewResult, setPreviewResult] = useState<AgentPreviewResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [selectedType, setSelectedType] = useState<string>('')
 
   const { data: agentsRes, refetch } = useQuery(['agents', 'mine'], async () => {
     const res = await apiClient.get<{ success: boolean; data: EmployeeAgent[] }>('/agents/my')
@@ -286,12 +346,10 @@ const Agents: React.FC = () => {
       const payload = {
         name: values.name,
         type: values.type,
+        dimension: values.dimension || undefined,
+        ai_model: values.ai_model || undefined,
         specialization: values.specialization,
-        skills: values.skills ? values.skills.split(',').map((s: string) => s.trim()) : [],
-        experience: values.experience || 0,
-        education: values.education || '',
-        traits: values.traits || '',
-        salaryRequirement: values.salaryRequirement,
+        extra_traits: values.extra_traits || undefined,
         companyId: values.companyId || undefined,
       }
       const res = await apiClient.post<{ success: boolean; data: EmployeeAgent }>(
@@ -318,27 +376,44 @@ const Agents: React.FC = () => {
     {
       title: '类型',
       dataIndex: 'type',
-      render: (value: EmployeeAgent['type']) => <Tag color="blue">{value}</Tag>,
-    },
-    { title: '专长', dataIndex: 'specialization' },
-    {
-      title: '技能',
-      dataIndex: 'skills',
-      render: (skills: string[]) =>
-        skills?.length ? (
-          <Space wrap>
-            {skills.slice(0, 3).map((skill) => (
-              <Tag key={skill}>{skill}</Tag>
-            ))}
-          </Space>
-        ) : (
-          '--'
-        ),
+      render: (value: EmployeeAgent['type'], record: EmployeeAgent) => (
+        <Space direction="vertical" size={0}>
+          <Tag color="blue">{value}</Tag>
+          {record.type === 'artist' && record.dimension && (
+            <Tag color="purple" style={{ fontSize: '11px' }}>
+              {record.dimension === '2d' ? '2D美术' : '3D美术'}
+            </Tag>
+          )}
+        </Space>
+      ),
     },
     {
-      title: '薪资',
-      dataIndex: 'salaryRequirement',
-      render: (value: number) => `${value} G币`,
+      title: 'AI模型',
+      dataIndex: 'ai_model',
+      render: (model: string, record: EmployeeAgent) => {
+        // 3D美术Agent显示双模型
+        if (record.type === 'artist' && record.dimension === '3d') {
+          return (
+            <Space direction="vertical" size={2}>
+              <Tag color="green">DALL-E-3 (贴图)</Tag>
+              <Tag color="cyan">Meshy-4 (模型)</Tag>
+            </Space>
+          )
+        }
+        // 2D美术Agent
+        if (record.type === 'artist' && record.dimension === '2d') {
+          return <Tag color="green">DALL-E-3</Tag>
+        }
+        // 其他Agent显示单一模型
+        return <Tag>{model || '默认模型'}</Tag>
+      },
+    },
+    { title: '专业', dataIndex: 'specialization' },
+    {
+      title: '额外特点',
+      dataIndex: 'extra_traits',
+      ellipsis: true,
+      render: (value: string) => value || '--',
     },
     {
       title: '操作',
@@ -550,11 +625,22 @@ const Agents: React.FC = () => {
         width={600}
         destroyOnClose
       >
-        <Form form={createForm} layout="vertical" onFinish={handleCreateAgent}>
+        <Form 
+          form={createForm} 
+          layout="vertical" 
+          onFinish={handleCreateAgent}
+          onValuesChange={(changedValues) => {
+            if (changedValues.type) {
+              setSelectedType(changedValues.type)
+              // 切换类型时清空专业字段
+              createForm.setFieldsValue({ specialization: undefined, ai_model: undefined, dimension: undefined })
+            }
+          }}
+        >
           <Form.Item
             name="name"
-            label="姓名"
-            rules={[{ required: true, message: '请输入员工姓名' }]}
+            label="员工名称"
+            rules={[{ required: true, message: '请输入员工名称' }]}
           >
             <Input placeholder="例如：张三" />
           </Form.Item>
@@ -567,48 +653,71 @@ const Agents: React.FC = () => {
             <Select placeholder="选择员工类型">
               <Select.Option value="planner">策划</Select.Option>
               <Select.Option value="artist">美术</Select.Option>
-              <Select.Option value="developer">开发</Select.Option>
+              <Select.Option value="developer">技术</Select.Option>
               <Select.Option value="tester">测试</Select.Option>
-              <Select.Option value="operator">运营</Select.Option>
+              <Select.Option value="music">音乐</Select.Option>
             </Select>
           </Form.Item>
 
-          <Form.Item
-            name="specialization"
-            label="专长"
-            rules={[{ required: true, message: '请输入专长领域' }]}
+          {selectedType === 'artist' && (
+            <Form.Item
+              name="dimension"
+              label="维度"
+              rules={[{ required: true, message: '请选择维度' }]}
+              tooltip="2D美术使用单个图像生成模型，3D美术使用贴图+3D模型双模型"
+            >
+              <Select placeholder="选择维度">
+                <Select.Option value="2d">2D</Select.Option>
+                <Select.Option value="3d">3D</Select.Option>
+              </Select>
+            </Form.Item>
+          )}
+
+          {selectedType && (
+            <Form.Item
+              name="specialization"
+              label="专业方向"
+              rules={[{ required: true, message: '请选择专业方向' }]}
+              tooltip={
+                selectedType === 'planner'
+                  ? '擅长的游戏品类'
+                  : selectedType === 'artist'
+                  ? '擅长的美术风格'
+                  : selectedType === 'developer'
+                  ? '擅长的技术方向'
+                  : '专业方向'
+              }
+            >
+              <Select 
+                placeholder="选择专业方向" 
+                options={specializationOptions[selectedType as keyof typeof specializationOptions] || []}
+              />
+            </Form.Item>
+          )}
+
+          {selectedType && (
+            <Form.Item
+              name="ai_model"
+              label="AI模型"
+              tooltip="留空则使用配置文件中的默认模型"
+            >
+              <Select 
+                placeholder="选择AI模型（可选）" 
+                allowClear
+                options={aiModelOptions[selectedType as keyof typeof aiModelOptions] || []}
+              />
+            </Form.Item>
+          )}
+
+          <Form.Item 
+            name="extra_traits" 
+            label="额外特点"
+            tooltip="会注入到agent执行时的系统提示词中，影响输出结果"
           >
-            <Input placeholder="例如：RPG游戏设计、3D建模、后端开发等" />
-          </Form.Item>
-
-          <Form.Item name="skills" label="技能">
-            <Input placeholder="多个技能用逗号分隔，例如：Unity,C#,Shader" />
-          </Form.Item>
-
-          <Form.Item name="experience" label="经验年限">
-            <Input type="number" placeholder="例如：3" />
-          </Form.Item>
-
-          <Form.Item name="education" label="学历">
-            <Select placeholder="选择学历" allowClear>
-              <Select.Option value="高中">高中</Select.Option>
-              <Select.Option value="大专">大专</Select.Option>
-              <Select.Option value="本科">本科</Select.Option>
-              <Select.Option value="硕士">硕士</Select.Option>
-              <Select.Option value="博士">博士</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item name="traits" label="特质">
-            <Input placeholder="例如：细心、创新、擅长沟通等" />
-          </Form.Item>
-
-          <Form.Item
-            name="salaryRequirement"
-            label="薪资要求 (游戏币)"
-            rules={[{ required: true, message: '请输入薪资要求' }]}
-          >
-            <Input type="number" placeholder="创建员工需消耗等额游戏币" />
+            <Input.TextArea 
+              rows={3} 
+              placeholder="例如：擅长C++性能优化和内存管理、精通日式动漫风格和角色设计、擅长数值平衡和经济系统设计等" 
+            />
           </Form.Item>
 
           <Form.Item name="companyId" label="分配到公司">
@@ -624,7 +733,7 @@ const Agents: React.FC = () => {
           <Alert
             type="info"
             message="提示"
-            description="创建员工需要消耗等同于薪资要求的游戏币。员工可以立即分配到公司，或暂不分配后续发布到市场。"
+            description="员工可以立即分配到公司开始工作。AI模型和额外特点会影响agent的实际执行效果。"
             showIcon
             style={{ marginBottom: 16 }}
           />

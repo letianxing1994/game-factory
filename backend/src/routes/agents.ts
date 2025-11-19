@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { validateAgentCreation, validateAgentUpdate } from '../middleware/validation';
 import { query, getConnection } from '../config/database';
 import { redisClient } from '../config/redis';
 import { kafkaProducer } from '../config/kafka';
@@ -10,19 +9,17 @@ import { AuthRequest } from '../middleware/auth';
 const router = Router();
 
 // 创建员工Agent
-router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, res) => {
+router.post('/', authenticate, async (req: AuthRequest, res) => {
   const connection = await getConnection();
   
   try {
     const { 
       name, 
-      type, 
-      specialization, 
-      skills, 
-      experience, 
-      education, 
-      traits, 
-      salaryRequirement,
+      type,
+      dimension,
+      ai_model,
+      specialization,
+      extra_traits,
       companyId 
     } = req.body;
     
@@ -46,9 +43,9 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
         });
       }
 
-      // 检查公司是否已满员
+      // 检查公司员工数量
       const employeeCount = await connection.execute(
-        'SELECT COUNT(*) as count FROM company_employees WHERE company_id = ? AND status = "active"',
+        'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
         [companyId]
       );
 
@@ -66,38 +63,30 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
       }
     }
 
-    // 检查用户游戏币余额（创建员工需要费用）
-    const creationCost = salaryRequirement; // 创建成本等于薪资要求
-    const userBalance = await connection.execute(
-      'SELECT game_coins FROM users WHERE id = ?',
-      [userId]
-    );
-
-    const currentBalance = userBalance[0][0]?.game_coins || 0;
-    
-    if (currentBalance < creationCost) {
-      await connection.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: '游戏币余额不足，无法创建员工' 
-      });
-    }
-
     // 创建员工Agent
     const agentResult = await connection.execute(
       `INSERT INTO agents (
-        owner_id, name, type, specialization, skills, experience_level, 
-        education, company_id, salary_cost, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available')`,
-      [userId, name, type, specialization, JSON.stringify(skills), experience || 1, 
-       education, companyId || null, salaryRequirement]
+        owner_id, name, type, dimension, ai_model, specialization, 
+        extra_traits, company_id, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId, 
+        name, 
+        type, 
+        dimension || null,
+        ai_model || null, 
+        specialization, 
+        extra_traits || null,
+        companyId || null, 
+        companyId ? 'employed' : 'available'
+      ]
     );
 
     const agentId = (agentResult[0] as any).insertId;
 
-    // 扣除用户游戏币
-    await connection.execute(
-      'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
+    // 不再扣除游戏币（移除了薪资成本逻辑）
+    // await connection.execute(
+    //   'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
       [creationCost, userId]
     );
 
@@ -107,8 +96,8 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
       `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
         related_type, related_id) 
        VALUES (?, 'spend', ?, ?, '创建员工Agent', 'agent', ?)`,
-      [userId, creationCost, balanceAfter, agentId]
-    );
+      // [userId, creationCost, balanceAfter, agentId]
+    // );
 
     await connection.commit();
 
@@ -122,6 +111,8 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
           userId,
           name,
           type,
+          dimension,
+          ai_model,
           specialization,
           companyId,
           timestamp: new Date().toISOString()
@@ -131,7 +122,6 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
 
     // 清除相关缓存
     await redisClient.del(`user:${userId}:agents`);
-    await redisClient.del(`user:${userId}:balance`);
     if (companyId) {
       await redisClient.del(`company:${companyId}:employees`);
     }
@@ -145,14 +135,12 @@ router.post('/', authenticate, validateAgentCreation, async (req: AuthRequest, r
         id: agentId,
         name,
         type,
+        dimension,
+        ai_model,
         specialization,
-        skills,
-        experience,
-        education,
-        traits,
-        salaryRequirement,
+        extra_traits,
         companyId,
-        status: 'active'
+        status: companyId ? 'employed' : 'available'
       }
     });
 

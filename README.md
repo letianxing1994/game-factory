@@ -1,13 +1,18 @@
-# 🏭 game-factory · Boss Portal & Workflow Orchestrator
+# 🏭 game-factory · 游戏工厂管理平台
 
-`game-factory` 是 my-agent-test 的上游门户，负责让“老板”配置公司章程、挑选 Agent、观察队列/Clarification，并把所有执行请求序列化为 Kafka 任务推送到 A2A 集群。仓库内包含：
+`game-factory` 是 AI 游戏开发系统的前端管理平台，提供公司管理、Agent 员工配置、工作流调度等功能。
 
-- `backend/`：Express + Kafka + MySQL + Redis，暴露 REST API / SSE，代理 my-agent-test。
-- `frontend/`：React + Vite + Ant Design，提供公司/员工/Workflow/Clarification/Preview UI。
-- `database/schema.sql`：初始化公司、员工、任务、钱包等表结构。
-- `deploy/`：多节点部署脚本（Kafka、Redis、MySQL、API、Frontend 等）。
+---
 
-## 1. 特性速览
+## 📖 快速导航
+
+- **[部署指南](DEPLOYMENT.md)** - 完整的本地/生产环境部署教程
+- **[数据库设置](docs/DATABASE_SETUP.md)** - MySQL 数据库初始化
+- **[配置说明](docs/CONFIGURATION.md)** - 环境变量和配置详解
+
+---
+
+## 1. 核心功能
 
 - **队列与容量感知**：公司执行请求全部写入 `workflow-tasks`，UI 实时显示排队人数、ETA。
 - **Clarification Loop**：当 my-agent-test 进入 `awaiting_clarification`，SSE 会把问题推送到前端，老板可在弹窗中回帖，答案会被代理转发回调度层。
@@ -126,7 +131,7 @@ npm run preview
 
 ## 9. 部署建议
 
-1. **基础设施**：Kafka、MySQL、Redis、对象存储、my-agent-test 建议分布式部署。可参考 `deploy/multi-node` 中的 docker-compose / helm 样例。
+1. **基础设施**：Kafka、MySQL、Redis、对象存储、my-agent-test 建议分布式部署。详见 `DEPLOYMENT.md` 部署指南。
 2. **Backend**：无状态，可横向扩展。务必设置 `KAFKA_CONSUMER_GROUP` 等避免重复消费。
 3. **Frontend**：Vite 产物可托管到任意静态服务器（OSS、CloudFront、NGINX）。记得配置 `VITE_API_URL` 指向后端域名（HTTPS / WSS）。
 4. **监控**：建议收集队列长度、Clarification backlog、SSE 连接数以及 Agent 预览耗时。

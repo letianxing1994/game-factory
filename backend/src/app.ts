@@ -20,6 +20,8 @@ import marketRoutes from './routes/market';
 import communityRoutes from './routes/community';
 import gameRoutes from './routes/games';
 import workflowRoutes from './routes/workflows';
+import userAssetsRoutes from './routes/userAssets';
+import agentTestRoutes from './routes/agentTest';
 import { initWorkflowQueueConsumers } from './services/workflowQueue';
 
 dotenv.config();
@@ -80,14 +82,16 @@ app.get('/health', (req, res) => {
 
 // API路由
 app.use('/api/auth', authRoutes);
-  app.use('/api/users', userRoutes);
-  app.use('/api/coins', coinRoutes);
-  app.use('/api/companies', companyRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/coins', coinRoutes);
+app.use('/api/companies', companyRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/community', communityRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/workflows', workflowRoutes);
+app.use('/api/user-assets', userAssetsRoutes);
+app.use('/api/agents-test', agentTestRoutes);
 
 // 静态文件服务
 app.use('/uploads', express.static('uploads'));

@@ -67,12 +67,18 @@ export function buildExecutionRequest(
       mcp: stage.mcp,
       resources: mergeResources(stage.resources, body.resources?.[stage.stageId]),
       expectedArtifacts: stage.expectedArtifacts,
+      // 新增：传递agent的专业和额外特点
+      agentMeta: assignedEmployee ? {
+        dimension: assignedEmployee.dimension,
+        specialization: assignedEmployee.specialization,
+        extraTraits: assignedEmployee.extra_traits,
+      } : undefined,
     };
 
     if (stage.stageId === 'planning') {
       const mergedFocus = mergePlanningFocus(
         stage.planningFocus,
-        derivePlanningFocusFromSkills(assignedEmployee),
+        derivePlanningFocusFromSpecialization(assignedEmployee),
         derivePlanningFocusFromGenre(body.project?.genre),
       );
       if (mergedFocus) {
@@ -106,47 +112,31 @@ function mergeResources(...resourceGroups: any[]): StageConfigInput['resources']
 function deserializeEmployee(employee: any) {
   return {
     ...employee,
-    skills: parseArray(employee?.skills),
   };
 }
 
-function parseArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value as string[];
+function derivePlanningFocusFromSpecialization(employee?: any): PlanningFocusConfig | undefined {
+  if (!employee || !employee.specialization) return undefined;
+  
+  // 从specialization字段推导planning focus（策划agent的specialization表示擅长的游戏品类）
+  const spec = employee.specialization.toLowerCase();
+  
+  // 根据specialization映射到对应的游戏类型，然后调用derivePlanningFocusFromGenre
+  let genreMapping: { primary: string } | undefined;
+  
+  if (spec === 'rpg') genreMapping = { primary: 'rpg' };
+  else if (spec === 'moba') genreMapping = { primary: 'moba' };
+  else if (spec === 'shooter') genreMapping = { primary: 'shooter' };
+  else if (spec === 'slg') genreMapping = { primary: 'slg' };
+  else if (spec === 'card') genreMapping = { primary: 'card' };
+  else if (spec === 'sandbox') genreMapping = { primary: 'sandbox' };
+  else if (spec === 'casual') genreMapping = { primary: 'casual' };
+  
+  if (genreMapping) {
+    return derivePlanningFocusFromGenre(genreMapping as GameGenreInput);
   }
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-function derivePlanningFocusFromSkills(employee?: any): PlanningFocusConfig | undefined {
-  if (!employee) return undefined;
-  const skills: string[] = Array.isArray(employee.skills) ? employee.skills : [];
-  const focus: PlanningFocusConfig = {};
-  if (skills.includes('narrative_design')) {
-    focus.narrative = true;
-  }
-  if (skills.includes('numeric_balance')) {
-    focus.numeric = true;
-  }
-  if (skills.includes('level_design')) {
-    focus.levelDesign = true;
-  }
-  const systemDesign: PlanningFocusConfig['systemDesign'] = {};
-  if (skills.includes('system_growth')) systemDesign.growth = true;
-  if (skills.includes('system_equipment')) systemDesign.equipment = true;
-  if (skills.includes('system_social')) systemDesign.social = true;
-  if (skills.includes('system_combat')) systemDesign.combat = true;
-  if (Object.values(systemDesign).some(Boolean)) {
-    focus.systemDesign = systemDesign;
-  }
-  return hasPlanningFocus(focus) ? focus : undefined;
+  
+  return undefined;
 }
 
 function derivePlanningFocusFromGenre(genre?: GameGenreInput): PlanningFocusConfig | undefined {

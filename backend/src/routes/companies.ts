@@ -464,6 +464,142 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 获取公司员工列表
+router.get('/:id/employees', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    // 检查公司所有权
+    const ownership = await query(
+      'SELECT id FROM companies WHERE id = ? AND owner_id = ?',
+      [id, userId]
+    );
+
+    if (ownership.length === 0) {
+      return res.status(403).json({ 
+        success: false, 
+        message: '无权访问此公司员工信息' 
+      });
+    }
+
+    const employees = await query<any[]>(
+      `SELECT a.* 
+       FROM agents a
+       WHERE a.company_id = ? AND a.status = 'employed'
+       ORDER BY a.type, a.id`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: employees
+    });
+
+  } catch (error) {
+    logger.error('获取公司员工列表失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '获取公司员工列表失败' 
+    });
+  }
+});
+
+// 向公司注资
+router.post('/:id/inject-funds', authenticate, async (req: AuthRequest, res) => {
+  const connection = await getConnection();
+  
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: '注资金额必须大于0'
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // 检查公司所有权和状态
+    const companyInfo = await connection.execute(
+      'SELECT * FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+      [id, userId]
+    );
+
+    if (Array.isArray(companyInfo[0]) && companyInfo[0].length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: '公司不存在或无权操作' 
+      });
+    }
+
+    // 检查用户游戏币余额
+    const userBalance = await connection.execute(
+      'SELECT game_coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    const currentBalance = userBalance[0][0]?.game_coins || 0;
+    
+    if (currentBalance < amount) {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: '游戏币余额不足' 
+      });
+    }
+
+    // 扣除用户游戏币
+    await connection.execute(
+      'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
+      [amount, userId]
+    );
+
+    // 增加公司资金
+    await connection.execute(
+      'UPDATE companies SET current_capital = current_capital + ?, updated_at = NOW() WHERE id = ?',
+      [amount, id]
+    );
+
+    // 记录交易
+    const balanceAfter = currentBalance - amount;
+    await connection.execute(
+      `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+        related_type, related_id) 
+       VALUES (?, 'spend', ?, ?, '向公司注资', 'company', ?)`,
+      [userId, amount, balanceAfter, id]
+    );
+
+    await connection.commit();
+
+    // 清除缓存
+    await redisClient.del(`company:${id}`);
+    await redisClient.del(`user:${userId}:companies`);
+    await redisClient.del(`user:${userId}:balance`);
+
+    logger.info(`用户 ${userId} 向公司 ${id} 注资 ${amount} 游戏币`);
+
+    res.json({
+      success: true,
+      message: '注资成功'
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    logger.error('注资失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '注资失败，请稍后重试' 
+    });
+  } finally {
+    connection.release();
+  }
+});
+
 // 获取公司统计信息
 router.get('/:id/stats', authenticate, async (req: AuthRequest, res) => {
   try {
