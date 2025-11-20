@@ -6,26 +6,28 @@ game-factory数据库管理文档和脚本。
 
 ## 🚀 快速开始
 
-### 初始化数据库
-
-```bash
-# 方法1: 使用Docker Compose（推荐）
-docker-compose up -d mysql
-
-# 方法2: 手动导入
-docker exec -i mysql mysql -uroot -p4215628@Tim mydb < schema.sql
-```
-
-### 双模型迁移（3D美术支持）
-
-如果你的系统早于v1.3.0，需要执行此迁移添加ai_model_2d和ai_model_3d字段：
+### 一键初始化数据库（推荐）
 
 ```powershell
-# Windows
-.\migrate-dual-models.bat
+# Windows一键初始化
+.\init-db.bat
+```
 
-# 验证
-docker exec mysql mysql -uroot -p4215628@Tim -e "DESCRIBE mydb.agents" | findstr ai_model
+此脚本会自动：
+1. 检查Docker容器状态
+2. 备份现有数据库
+3. 导入完整数据库结构
+4. 插入默认配置数据
+5. 验证表结构
+
+### 手动初始化
+
+```bash
+# 方法1: 使用Docker Compose
+docker-compose up -d mysql
+
+# 方法2: 手动导入完整结构
+docker exec -i mysql mysql -uroot -p4215628@Tim mydb < complete-schema.sql
 ```
 
 ---
@@ -34,10 +36,9 @@ docker exec mysql mysql -uroot -p4215628@Tim -e "DESCRIBE mydb.agents" | findstr
 
 | 文件 | 说明 |
 |------|------|
-| `schema.sql` | 完整数据库初始化SQL，包含所有表结构 |
-| `add-dual-models.sql` | 3D美术双模型迁移SQL（v1.3.0+） |
-| `migrate-dual-models.bat` | Windows迁移脚本（自动备份+执行） |
-| `rebuild-db.bat` | 完整重建数据库（危险操作） |
+| `complete-schema.sql` | **最终版本** - 完整数据库结构 + 双模型支持 + 默认数据 |
+| `init-db.bat` | **推荐使用** - Windows一键初始化脚本（自动备份+导入+验证） |
+| `README.md` | 本文档 - 数据库使用说明 |
 
 ---
 
@@ -93,33 +94,40 @@ status, started_at, completed_at, artifacts
 
 ---
 
-## 🔄 迁移历史
+## 🗄️ 数据库特性
 
-### v1.3.0 - 双模型支持
-**日期**: 2025-11-20  
-**变更**:
-- 添加 `ai_model_2d` VARCHAR(50) - 2D模型（贴图/原画）
-- 添加 `ai_model_3d` VARCHAR(50) - 3D模型（3D资产生成）
-- 数据迁移：
-  - 2D美术: ai_model → ai_model_2d
-  - 3D美术: ai_model_2d='dall-e-3', ai_model_3d='meshy-4'
-  - 其他类型: 保持ai_model不变
+### 版本: v1.3.0+ (2025-11-20)
 
-**执行**:
-```bash
-.\migrate-dual-models.bat
-```
+**核心功能**:
+- ✅ 11张核心业务表（用户、公司、Agent、游戏等）
+- ✅ 双模型支持（3D美术Agent支持ai_model_2d + ai_model_3d）
+- ✅ 完整的工作流系统（workflow + workflow_stages）
+- ✅ 社区系统（posts + comments）
+- ✅ 市场交易系统（market_transactions）
+- ✅ 游戏币经济系统（coin_transactions）
 
-### v1.2.0 - Agent表重构
-**日期**: 2025-11-19  
-**变更**:
-- 移除9个冗余字段: skills, education, experience_level, *_score, salary_cost, is_on_market, market_price
-- 添加 `extra_traits` TEXT - 用户自定义特点
-- 更新字段注释，明确ai_model和specialization含义
+**主要表**:
+- `users` - 用户基础信息
+- `companies` - 游戏公司
+- `agents` - AI员工（支持双模型）
+- `games` - 游戏项目
+- `game_development_teams` - 游戏开发团队
+- `workflows` - 游戏开发工作流
+- `workflow_stages` - 工作流阶段
+- `coin_transactions` - 游戏币交易
+- `market_transactions` - 市场交易
+- `community_posts` - 社区帖子
+- `community_comments` - 社区评论
+- `system_configs` - 系统配置
 
 ---
 
 ## 🛠️ 常用操作
+
+### 查看所有表
+```bash
+docker exec mysql mysql -uroot -p4215628@Tim -e "SHOW TABLES FROM mydb"
+```
 
 ### 查看Agent列表
 ```sql
@@ -138,12 +146,12 @@ WHERE type = 'artist' AND dimension = '3d';
 ```
 
 ### 备份数据库
-```bash
-docker exec mysql mysqldump -uroot -p4215628@Tim mydb > backup_$(date +%Y%m%d).sql
+```powershell
+docker exec mysql mysqldump -uroot -p4215628@Tim mydb > backup_20251120.sql
 ```
 
 ### 恢复数据库
-```bash
+```powershell
 docker exec -i mysql mysql -uroot -p4215628@Tim mydb < backup_20251120.sql
 ```
 
@@ -151,39 +159,40 @@ docker exec -i mysql mysql -uroot -p4215628@Tim mydb < backup_20251120.sql
 
 ## ⚠️ 注意事项
 
-1. **备份**: 执行任何迁移前自动备份，备份文件在当前目录
-2. **测试环境**: 建议先在测试环境验证迁移脚本
-3. **缓存清除**: 迁移后后端会自动清除Redis缓存
-4. **字段兼容**: ai_model字段保留用于向后兼容
+1. **Docker卷**: 数据存储在Docker命名卷 `game-factory_mysql_volume` 中
+2. **备份**: init-db.bat会在导入前自动备份现有数据
+3. **默认数据**: complete-schema.sql包含6条系统配置默认数据
+4. **字符集**: 所有表使用utf8mb4编码，支持emoji和多语言
 
 ---
 
 ## 🔍 故障排查
 
-### 迁移失败
-```bash
-# 检查备份文件
-ls backup_*.sql
-
-# 查看MySQL日志
-docker logs mysql
-
-# 手动回滚
-docker exec -i mysql mysql -uroot -p4215628@Tim mydb < backup_agents_dual_models.sql
+### 容器未启动
+```powershell
+docker-compose up -d mysql
+docker ps | findstr mysql
 ```
 
-### 数据不一致
-```bash
-# 验证表结构
-docker exec mysql mysql -uroot -p4215628@Tim -e "DESCRIBE mydb.agents"
+### 查看MySQL日志
+```powershell
+docker logs mysql
+```
 
-# 检查数据
-docker exec mysql mysql -uroot -p4215628@Tim -e "SELECT * FROM mydb.agents LIMIT 5"
+### 验证表结构
+```powershell
+docker exec mysql mysql -uroot -p4215628@Tim -e "DESCRIBE mydb.agents"
+```
+
+### 检查数据
+```powershell
+docker exec mysql mysql -uroot -p4215628@Tim -e "SELECT COUNT(*) as total FROM mydb.games"
 ```
 
 ---
 
-## 📚 参考文档
+## 📚 相关文档
 
-- [完整配置文档](../docs/CONFIGURATION.md)
-- [数据库设置指南](../docs/DATABASE_SETUP.md)
+- [项目配置文档](../docs/CONFIGURATION.md)
+- [数据库详细设置](../docs/DATABASE_SETUP.md)
+- [Docker Compose配置](../docker-compose.yml)

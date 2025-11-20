@@ -50,7 +50,6 @@ const SailorMoonGuide: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true)  // 始终初始显示
   const [isMinimized, setIsMinimized] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
-  const [hasSeenGuide, setHasSeenGuide] = useState(false)
 
   useEffect(() => {
     // 强制显示水冰月，忽略localStorage
@@ -84,7 +83,6 @@ const SailorMoonGuide: React.FC = () => {
         break
       case '不再提示':
         localStorage.setItem('hasSeenGuide', 'true')
-        setHasSeenGuide(true)
         setIsMinimized(true)  // 最小化而不是消失
         break
       case '明白了':
@@ -100,12 +98,10 @@ const SailorMoonGuide: React.FC = () => {
         break
       case '跳过教程':
         localStorage.setItem('hasSeenGuide', 'true')
-        setHasSeenGuide(true)
         setIsMinimized(true)  // 最小化而不是消失
         break
       case '完成教程':
         localStorage.setItem('hasSeenGuide', 'true')
-        setHasSeenGuide(true)
         setIsMinimized(true)  // 最小化而不是消失
         break
       case '重新开始':

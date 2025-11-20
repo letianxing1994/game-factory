@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Layout as AntLayout, Menu } from 'antd'
 import { 
   DashboardOutlined, 
   ShopOutlined, 
-  RobotOutlined, 
+  RobotOutlined,
+  PlaySquareOutlined,
   ShoppingOutlined, 
   MessageOutlined, 
   UserOutlined,
@@ -20,13 +21,12 @@ const Layout: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
-  const [isFirstLogin, setIsFirstLogin] = useState(false)
 
   useEffect(() => {
     // 检查是否是首次登录
     const loginCount = localStorage.getItem('loginCount')
     if (!loginCount || loginCount === '1') {
-      setIsFirstLogin(true)
+      // setIsFirstLogin(true) // 暂时注释，以后可能会用到
     }
   }, [])
 
@@ -45,6 +45,11 @@ const Layout: React.FC = () => {
       key: '/agents',
       icon: <RobotOutlined />,
       label: '员工Agent',
+    },
+    {
+      key: '/games',
+      icon: <PlaySquareOutlined />,
+      label: '游戏中心',
     },
     {
       key: '/market',

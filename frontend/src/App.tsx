@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Companies from './pages/Companies'
 import Agents from './pages/Agents'
+import Games from './pages/Games'
 import Market from './pages/Market'
 import Community from './pages/Community'
 import Profile from './pages/Profile'
@@ -38,6 +39,7 @@ function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="companies" element={<Companies />} />
                 <Route path="agents" element={<Agents />} />
+                <Route path="games" element={<Games />} />
                 <Route path="market" element={<Market />} />
                 <Route path="community" element={<Community />} />
                 <Route path="profile" element={<Profile />} />
