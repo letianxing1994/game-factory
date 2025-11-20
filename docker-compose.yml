@@ -10,7 +10,7 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ./Data/mysql_data:/var/lib/mysql  # 挂载MySQL数据目录
+      - G:/Docker/Data/mysql_data:/var/lib/mysql  # 挂载MySQL数据目录到G盘
     networks:
       - my_network
     command: --default-authentication-plugin=mysql_native_password  # MySQL 8.x可能需要此配置
@@ -22,7 +22,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./Data/redis_data:/data  # 挂载Redis数据目录
+      - G:/Docker/Data/redis_data:/data  # 挂载Redis数据目录到G盘
     networks:
       - my_network
     restart: unless-stopped
