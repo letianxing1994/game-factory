@@ -31,11 +31,20 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       window.location.href = '/login'
-      message.error('登录已过期，请重新登录')
+      message.error({
+        content: '登录已过期，请重新登录',
+        style: { color: '#ff7875' }
+      })
     } else if (error.response?.status === 403) {
-      message.error('没有权限访问')
+      message.error({
+        content: '没有权限访问',
+        style: { color: '#ff7875' }
+      })
     } else if (error.response?.status >= 500) {
-      message.error('服务器错误，请稍后重试')
+      message.error({
+        content: '服务器错误，请稍后重试',
+        style: { color: '#ff7875' }
+      })
     }
     return Promise.reject(error)
   }

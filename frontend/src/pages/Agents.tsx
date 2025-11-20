@@ -456,10 +456,10 @@ const Agents: React.FC = () => {
         cancelText="取消"
       >
         <Space direction="vertical">
-          <Text>即将使用默认配置试运行员工：<Text strong>{pendingPreviewAgent?.name}</Text></Text>
-          <Text type="secondary">• 项目名称：{pendingPreviewAgent?.name}的试运行项目</Text>
-          <Text type="secondary">• 游戏类型：RPG</Text>
-          <Text type="secondary">• 执行阶段：{pendingPreviewAgent && agentStageMap[pendingPreviewAgent.type]}</Text>
+          <Text style={{ color: '#FFD76E' }}>即将使用默认配置试运行员工：<Text strong style={{ color: '#d4af37' }}>{pendingPreviewAgent?.name}</Text></Text>
+          <Text style={{ color: '#e8c468' }}>• 项目名称：{pendingPreviewAgent?.name}的试运行项目</Text>
+          <Text style={{ color: '#e8c468' }}>• 游戏类型：RPG</Text>
+          <Text style={{ color: '#e8c468' }}>• 执行阶段：{pendingPreviewAgent && agentStageMap[pendingPreviewAgent.type]}</Text>
           <Alert
             type="info"
             message="试运行会消耗AI模型调用额度，确认要继续吗？"

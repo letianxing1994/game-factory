@@ -809,3 +809,62 @@ h1, h2, h3, h4, h5, h6 {
   color: #f5e6d3 !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
+
+/* Message消息提示博德之门风格 */
+.ant-message-notice-content {
+  background: rgba(40, 25, 15, 0.98) !important;
+  border: 2px solid rgba(200, 140, 80, 0.6) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 150, 80, 0.3) !important;
+  backdrop-filter: blur(10px);
+}
+
+.ant-message-notice-content .anticon {
+  color: #d4af37 !important;
+}
+
+.ant-message-success .ant-message-notice-content {
+  color: #95de64 !important;
+}
+
+.ant-message-error .ant-message-notice-content {
+  color: #ff7875 !important;
+}
+
+.ant-message-warning .ant-message-notice-content {
+  color: #ffc53d !important;
+}
+
+.ant-message-info .ant-message-notice-content {
+  color: #69c0ff !important;
+}
+
+.ant-message-notice-content span {
+  color: inherit !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  font-weight: 600;
+}
+
+/* Notification通知博德之门风格 */
+.ant-notification-notice {
+  background: rgba(40, 25, 15, 0.98) !important;
+  border: 2px solid rgba(200, 140, 80, 0.6) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 150, 80, 0.3) !important;
+  backdrop-filter: blur(10px);
+}
+
+.ant-notification-notice-message {
+  color: #FFD76E !important;
+  font-weight: 700 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.ant-notification-notice-description {
+  color: #e8c468 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.ant-notification-notice-icon {
+  color: #d4af37 !important;
+}

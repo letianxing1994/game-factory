@@ -113,9 +113,8 @@ async function initializeServices() {
   try {
     logger.info('正在初始化服务...');
     
-    // 连接数据�?    
-    await connectDatabase();
-    logger.info('数据库连接成功');
+    // 连接数据�?    await connectDatabase();
+    logger.info('数据库连接成�?);
     
     // 连接Redis
     await connectRedis();
@@ -127,13 +126,12 @@ async function initializeServices() {
 
     await initWorkflowQueueConsumers();
     
-    // 启动服务器
-    app.listen(PORT, () => {
+    // 启动服务�?    app.listen(PORT, () => {
       logger.info(`服务器运行在端口 ${PORT}`);
     });
     
   } catch (error) {
-    logger.error('服务初始化失败', error);
+    logger.error('服务初始化失�?', error);
     process.exit(1);
   }
 }

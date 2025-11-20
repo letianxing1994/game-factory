@@ -10,8 +10,8 @@ const router = Router();
 router.get('/', optionalAuth, async (req, res) => {
   try {
     const { companyId, status, page = '1', limit = '20', sort } = req.query;
-    const pageNumber = Number(page) || 1;
-    const pageSize = Number(limit) || 20;
+    const pageNumber = parseInt(page as string) || 1;
+    const pageSize = parseInt(limit as string) || 20;
     const offset = (pageNumber - 1) * pageSize;
 
     let sql = `
@@ -25,7 +25,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     if (companyId) {
       sql += ' AND g.company_id = ?';
-      params.push(companyId);
+      params.push(parseInt(companyId as string));
     }
 
     if (status) {
@@ -42,8 +42,8 @@ router.get('/', optionalAuth, async (req, res) => {
       sql += ' ORDER BY g.created_at DESC';
     }
 
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(pageSize, offset);
+    // 使用字符串拼接而不是参数绑定来避免MySQL的LIMIT参数类型问题
+    sql += ` LIMIT ${pageSize} OFFSET ${offset}`;
 
     const games = await query<any[]>(sql, params);
 
