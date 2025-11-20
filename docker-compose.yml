@@ -10,10 +10,10 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - G:/Docker/Data/mysql_data:/var/lib/mysql  # 挂载MySQL数据目录到G盘
+      - mysql_volume:/var/lib/mysql  # 使用Docker命名卷（支持完整权限）
     networks:
       - my_network
-    command: --default-authentication-plugin=mysql_native_password  # MySQL 8.x可能需要此配置
+    command: --default-authentication-plugin=mysql_native_password
     restart: unless-stopped  # 容器退出时自动重启，除非明确停止
 
   redis:
@@ -22,7 +22,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - G:/Docker/Data/redis_data:/data  # 挂载Redis数据目录到G盘
+      - redis_volume:/data  # 使用Docker命名卷
     networks:
       - my_network
     restart: unless-stopped
@@ -57,8 +57,10 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql_data: {}  # 声明命名卷（可选），但这里我们使用路径挂载
-  redis_data: {}
+  mysql_volume:
+    driver: local
+  redis_volume:
+    driver: local
   kafka_data: {}
 
 networks:
