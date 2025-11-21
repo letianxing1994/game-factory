@@ -112,11 +112,13 @@ const aiModelOptions = {
   ],
   artist2d: [
     { label: 'DALL-E-3（默认）', value: 'dall-e-3' },
+    { label: 'Banana2（Google）', value: 'banana2' },
     { label: 'Midjourney', value: 'midjourney' },
     { label: 'Stable Diffusion', value: 'stable-diffusion' },
   ],
   artist3d_2d: [
     { label: 'DALL-E-3（推荐）', value: 'dall-e-3' },
+    { label: 'Banana2（Google）', value: 'banana2' },
     { label: 'Midjourney', value: 'midjourney' },
     { label: 'Stable Diffusion', value: 'stable-diffusion' },
   ],

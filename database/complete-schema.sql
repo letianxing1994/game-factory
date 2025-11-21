@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS agents (
     owner_id BIGINT NOT NULL COMMENT '所有者用户ID',
     company_id BIGINT COMMENT '所属公司ID',
     ai_model VARCHAR(50) COMMENT 'AI模型（旧字段，兼容保留）：DeepSeek-R1, GPT-5, Claude-Sonnet-4.5等',
-    ai_model_2d VARCHAR(50) COMMENT '2D模型（用于生成原画/贴图）：DALL-E-3, Midjourney等',
-    ai_model_3d VARCHAR(50) COMMENT '3D模型（用于生成3D资产）：Meshy-4, Luma AI等',
+    ai_model_2d VARCHAR(50) COMMENT '2D模型（用于生成原画/贴图）：DALL-E-3, Banana2, Midjourney, Stable Diffusion等',
+    ai_model_3d VARCHAR(50) COMMENT '3D模型（用于生成3D资产）：Meshy-4, Luma AI, Rodin等',
     specialization VARCHAR(100) COMMENT '专业方向：策划=RPG/MOBA/SLG等，美术=realistic/cartoon/pixel等，技术=singleplayer/multiplayer等',
     extra_traits TEXT COMMENT '额外特点（影响提示词）：如"擅长C++性能优化"、"精通像素艺术风格"等',
     status VARCHAR(20) DEFAULT 'employed' COMMENT '状态：employed-在职，available-待业',
@@ -237,7 +237,7 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND COLUMN_NAME = 'ai_model_2d';
 
 SET @sql = IF(@col_exists = 0,
-    'ALTER TABLE agents ADD COLUMN ai_model_2d VARCHAR(50) COMMENT ''2D模型（用于生成原画/贴图）：DALL-E-3, Midjourney等'' AFTER ai_model',
+    'ALTER TABLE agents ADD COLUMN ai_model_2d VARCHAR(50) COMMENT ''2D模型（用于生成原画/贴图）：DALL-E-3, Banana2, Midjourney, Stable Diffusion等'' AFTER ai_model',
     'SELECT ''ai_model_2d already exists'' AS status');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
