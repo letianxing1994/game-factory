@@ -23,10 +23,12 @@ const { Title, Text } = Typography
 
 const agentStageMap: Record<string, string> = {
   planner: 'planning',
+  architect: 'architecture',
   artist: 'art',
   developer: 'tech',
   tester: 'test',
   operator: 'planning',
+  music: 'music',
 }
 
 const defaultGdd = (values: PreviewFormValues) => {
@@ -111,6 +113,11 @@ const aiModelOptions = {
     { label: 'GPT-5', value: 'gpt-5' },
     { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
   ],
+  architect: [
+    { label: 'Claude Sonnet 4.5（默认）', value: 'claude-sonnet-4.5' },
+    { label: 'GPT-5', value: 'gpt-5' },
+    { label: 'DeepSeek R1', value: 'deepseek-r1' },
+  ],
   artist2d: [
     { label: 'DALL-E-3（默认）', value: 'dall-e-3' },
     { label: 'Banana2（Google）', value: 'banana2' },
@@ -152,6 +159,14 @@ const specializationOptions = {
     { label: 'Shooter', value: 'shooter' },
     { label: 'Casual', value: 'casual' },
     { label: 'Sandbox', value: 'sandbox' },
+  ],
+  architect: [
+    { label: 'Unity引擎', value: 'unity' },
+    { label: 'Unreal Engine', value: 'unreal' },
+    { label: 'Godot引擎', value: 'godot' },
+    { label: 'OpenGL原生', value: 'opengl' },
+    { label: 'Vulkan原生', value: 'vulkan' },
+    { label: 'DirectX12原生', value: 'directx12' },
   ],
   artist: [
     { label: '写实风格', value: 'realistic' },
@@ -839,6 +854,7 @@ const Agents: React.FC = () => {
           >
             <Select placeholder="选择员工类型">
               <Select.Option value="planner">策划</Select.Option>
+              <Select.Option value="architect">架构师</Select.Option>
               <Select.Option value="artist">美术</Select.Option>
               <Select.Option value="developer">技术</Select.Option>
               <Select.Option value="tester">测试</Select.Option>
