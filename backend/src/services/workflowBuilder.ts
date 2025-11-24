@@ -3,6 +3,7 @@ import {
   StageConfigInput,
   PlanningFocusConfig,
   GameGenreInput,
+  StageResource,
 } from '../types/workflow';
 
 export const WORKFLOW_MAP = {
@@ -14,10 +15,76 @@ export const WORKFLOW_MAP = {
 export const DEFAULT_STAGE_BLUEPRINT: Array<{ stageId: string; agentId: string; requiredType: string }> = [
   { stageId: 'planning', agentId: 'planning-agent', requiredType: 'planner' },
   { stageId: 'art', agentId: 'art-agent', requiredType: 'artist' },
-  { stageId: 'music', agentId: 'music-agent', requiredType: 'artist' },
+  { stageId: 'music', agentId: 'music-agent', requiredType: 'music' },
+  { stageId: 'architecture', agentId: 'architecture-agent', requiredType: 'architect' },
   { stageId: 'tech', agentId: 'tech-agent', requiredType: 'developer' },
   { stageId: 'test', agentId: 'test-agent', requiredType: 'tester' },
 ];
+
+/**
+ * 根据工作流类型调整阶段蓝图
+ * - waterfall (linear): planning -> art -> music -> architecture -> tech -> test (严格顺序)
+ * - agile (concurrent): planning -> (art + music + architecture 并行) -> tech -> test
+ * - hybrid (feedback): planning -> architecture -> (art + music + tech 并行) -> test (支持反馈循环)
+ */
+function adjustStagesByWorkflowType(
+  baseBlueprint: any[],
+  workflowType: string,
+  executionMode: string,
+): any[] {
+  // 如果用户自定义了阶段，直接返回
+  if (baseBlueprint !== DEFAULT_STAGE_BLUEPRINT) {
+    return baseBlueprint;
+  }
+
+  const blueprint = [...baseBlueprint];
+
+  // 根据执行模式调整阶段依赖和顺序
+  switch (executionMode) {
+    case 'sequential':
+      // 瀑布流：严格按顺序执行
+      return blueprint.map((stage, index) => ({
+        ...stage,
+        dependencies: index > 0 ? [blueprint[index - 1].stageId] : undefined,
+      }));
+
+    case 'async_parallel':
+      // 敏捷模式：策划完成后，美术/音乐/架构师并行，然后研发和测试
+      return blueprint.map((stage) => {
+        if (stage.stageId === 'planning') {
+          return stage;
+        } else if (['art', 'music', 'architecture'].includes(stage.stageId)) {
+          return { ...stage, dependencies: ['planning'] };
+        } else if (stage.stageId === 'tech') {
+          return { ...stage, dependencies: ['architecture'] };
+        } else if (stage.stageId === 'test') {
+          return { ...stage, dependencies: ['tech'] };
+        }
+        return stage;
+      });
+
+    case 'feedback_loop':
+      // 混合模式：策划 -> 架构师 -> (美术/音乐/研发 并行) -> 测试
+      return blueprint.map((stage) => {
+        if (stage.stageId === 'planning') {
+          return stage;
+        } else if (stage.stageId === 'architecture') {
+          return { ...stage, dependencies: ['planning'] };
+        } else if (['art', 'music', 'tech'].includes(stage.stageId)) {
+          return { ...stage, dependencies: ['architecture'], allowFeedback: true };
+        } else if (stage.stageId === 'test') {
+          return { ...stage, dependencies: ['tech'], allowFeedback: true };
+        }
+        return stage;
+      });
+
+    default:
+      return blueprint;
+  }
+}
+
+// 必需的员工类型
+const REQUIRED_AGENT_TYPES = ['planner', 'architect', 'artist', 'developer', 'tester', 'music'];
 
 export function buildExecutionRequest(
   company: any,
@@ -25,6 +92,23 @@ export function buildExecutionRequest(
   body: any,
   companyWorkflowConfig: any,
 ): ExecutionRequestInput {
+  // 验证必需的员工类型
+  const employeeTypes = new Set(employees.map(e => e.type));
+  const missingTypes = REQUIRED_AGENT_TYPES.filter(type => !employeeTypes.has(type));
+  
+  if (missingTypes.length > 0) {
+    const typeNameMap: Record<string, string> = {
+      planner: '策划',
+      architect: '架构师',
+      artist: '美术',
+      developer: '研发',
+      tester: '测试',
+      music: '音频'
+    };
+    const missingNames = missingTypes.map(t => typeNameMap[t] || t).join('、');
+    throw new Error(`公司缺少必需的员工类型: ${missingNames}。请先雇佣这些类型的员工。`);
+  }
+
   const workflowMeta =
     companyWorkflowConfig?.workflow ||
     WORKFLOW_MAP[company.workflow_type as keyof typeof WORKFLOW_MAP] ||
@@ -37,8 +121,15 @@ export function buildExecutionRequest(
 
   const workflowId = body.workflowId || companyWorkflowConfig?.workflowId || workflowMeta.workflowId;
 
-  const stageBlueprints =
+  const baseBlueprints =
     body.stages || companyWorkflowConfig?.stages || DEFAULT_STAGE_BLUEPRINT;
+  
+  // 根据工作流类型调整阶段蓝图
+  const stageBlueprints = adjustStagesByWorkflowType(
+    baseBlueprints,
+    company.workflow_type,
+    executionMode,
+  );
 
   const normalizedEmployees = employees.map(deserializeEmployee);
 
@@ -84,6 +175,45 @@ export function buildExecutionRequest(
       if (mergedFocus) {
         stageConfig.planningFocus = mergedFocus;
       }
+    }
+
+    // 架构师阶段特殊配置：追踪美术和音频资产
+    if (stage.stageId === 'architecture') {
+      stageConfig.expectedArtifacts = stageConfig.expectedArtifacts || [
+        { type: 'architecture-doc', format: 'markdown' },
+        { type: 'tech-stack', format: 'json' },
+        { type: 'api-design', format: 'json' },
+      ];
+      
+      // 架构师阶段的资源包括策划文档和可选的美术/音乐资源
+      const architectureResources: StageResource[] = [];
+      
+      // 添加策划阶段输出作为输入资源
+      architectureResources.push({
+        type: 'planning-doc',
+        url: 'stage://planning/output',
+        metadata: { required: true },
+      });
+      
+      // 如果存在美术和音乐阶段，追踪它们的产物
+      if (stageBlueprints.some((s: any) => s.stageId === 'art')) {
+        architectureResources.push({
+          type: 'art-assets',
+          url: 'stage://art/output',
+          metadata: { optional: true, trackChanges: true },
+        });
+      }
+      
+      if (stageBlueprints.some((s: any) => s.stageId === 'music')) {
+        architectureResources.push({
+          type: 'music-assets',
+          url: 'stage://music/output',
+          metadata: { optional: true, trackChanges: true },
+        });
+      }
+      
+      // 合并用户提供的资源
+      stageConfig.resources = mergeResources(architectureResources, stageConfig.resources);
     }
 
     return stageConfig;
@@ -220,6 +350,10 @@ export function mapAgentTypeToStage(type: string) {
       return 'planning';
     case 'artist':
       return 'art';
+    case 'music':
+      return 'music';
+    case 'architect':
+      return 'architecture';
     case 'developer':
       return 'tech';
     case 'tester':

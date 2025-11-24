@@ -36,7 +36,7 @@ export interface Company {
 export interface EmployeeAgent {
   id: number;
   name: string;
-  type: 'planner' | 'artist' | 'developer' | 'tester' | 'operator' | 'music';
+  type: 'planner' | 'architect' | 'artist' | 'developer' | 'tester' | 'operator' | 'music';
   dimension?: '2d' | '3d'; // 仅美术类型需要，区分2D/3D美术
   ai_model?: string; // AI模型名称（非美术或向后兼容）
   ai_model_2d?: string; // 2D模型（用于贴图/原画）

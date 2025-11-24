@@ -5,6 +5,7 @@ import { redisClient } from '../config/redis';
 import { kafkaProducer } from '../config/kafka';
 import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
+import { conversationalService } from '../services/conversationalService';
 
 const router = Router();
 
@@ -147,6 +148,145 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     });
   } finally {
     connection.release();
+  }
+});
+
+// 对话式雇佣员工
+router.post('/conversational-create', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { companyId, model, messages } = req.body;
+    const userId = req.user!.id;
+
+    if (!companyId || !model || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少必需参数：companyId, model 和 messages',
+      });
+    }
+
+    // 调用 LLM 服务
+    const result = await conversationalService.processAgentCreation(model, messages);
+
+    if (result.shouldExecute && result.functionCall) {
+      // 解析函数参数并雇佣员工
+      const args = JSON.parse(result.functionCall.arguments);
+      const connection = await getConnection();
+
+      try {
+        await connection.beginTransaction();
+
+        // 验证公司所有权
+        const companyOwnership = await connection.execute(
+          'SELECT id, max_employees FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+          [companyId, userId]
+        );
+
+        if (Array.isArray(companyOwnership[0]) && companyOwnership[0].length === 0) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            reply: '无权在此公司雇佣员工。',
+          });
+        }
+
+        const company = companyOwnership[0][0];
+
+        // 检查员工数量限制
+        const employeeCount = await connection.execute(
+          'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
+          [companyId]
+        );
+
+        const currentCount = employeeCount[0][0]?.count || 0;
+
+        if (currentCount >= company.max_employees) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            reply: `公司员工数已达上限 (${company.max_employees})，无法继续雇佣。`,
+          });
+        }
+
+        // 创建员工
+        const agentResult = await connection.execute(
+          `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'available')`,
+          [
+            args.name,
+            args.type,
+            args.dimension,
+            args.ai_model,
+            args.specialization,
+            args.extra_traits || null,
+          ]
+        );
+
+        const agentId = (agentResult[0] as any).insertId;
+
+        // 关联到公司
+        await connection.execute(
+          `INSERT INTO company_employees (company_id, employee_id, status, hired_at)
+           VALUES (?, ?, 'active', NOW())`,
+          [companyId, agentId]
+        );
+
+        // 更新员工状态
+        await connection.execute(
+          `UPDATE employee_agents SET status = 'employed' WHERE id = ?`,
+          [agentId]
+        );
+
+        await connection.commit();
+
+        // 发送Kafka消息
+        await kafkaProducer.send({
+          topic: 'agent-events',
+          messages: [
+            {
+              value: JSON.stringify({
+                event: 'agent_hired',
+                agentId,
+                companyId,
+                userId,
+                name: args.name,
+                type: args.type,
+                timestamp: new Date().toISOString(),
+              }),
+            },
+          ],
+        });
+
+        // 清除缓存
+        await redisClient.del(`user:${userId}:agents:all:all`);
+        await redisClient.del(`company:${companyId}:employees`);
+
+        logger.info(`用户 ${userId} 通过对话为公司 ${companyId} 雇佣了员工 ${agentId}: ${args.name}`);
+
+        res.json({
+          success: true,
+          agentId,
+          functionCall: result.functionCall,
+          reply: `员工"${args.name}"雇佣成功！`,
+        });
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+    } else {
+      // 返回 LLM 的回复，继续对话
+      res.json({
+        success: true,
+        reply: result.reply,
+      });
+    }
+  } catch (error: any) {
+    logger.error('对话式雇佣员工失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || '对话式雇佣失败',
+    });
   }
 });
 

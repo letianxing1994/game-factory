@@ -8,6 +8,7 @@ import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
 import { workflowQueue } from '../services/workflowQueue';
 import { buildExecutionRequest } from '../services/workflowBuilder';
+import { conversationalService } from '../services/conversationalService';
 
 const router = Router();
 
@@ -126,6 +127,204 @@ router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest,
     });
   } finally {
     connection.release();
+  }
+});
+
+// 对话式创建公司（完整流程：公司 + 6个必需员工）
+router.post('/conversational-create', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { model, messages, phase, companyId, createdEmployees } = req.body;
+    const userId = req.user!.id;
+
+    if (!model || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少必需参数：model 和 messages',
+      });
+    }
+
+    // 确定当前阶段：company（创建公司）或 employees（创建员工）
+    const currentPhase = phase || 'company';
+    const employeesList = createdEmployees || [];
+
+    // 调用 LLM 服务
+    const result = await conversationalService.processCompanyCreation(model, messages, {
+      phase: currentPhase,
+      companyId,
+      createdEmployees: employeesList,
+    });
+
+    if (result.shouldExecute && result.functionCall) {
+      const args = JSON.parse(result.functionCall.arguments);
+      const connection = await getConnection();
+
+      try {
+        await connection.beginTransaction();
+
+        if (currentPhase === 'company') {
+          // 阶段1：创建公司
+          // 检查公司数量限制（最多5家）
+          const companyCount = await connection.execute(
+            'SELECT COUNT(*) as count FROM companies WHERE owner_id = ?',
+            [userId]
+          );
+          const currentCompanyCount = companyCount[0][0]?.count || 0;
+          if (currentCompanyCount >= 5) {
+            await connection.rollback();
+            return res.status(400).json({
+              success: false,
+              reply: '您已经拥有5家公司（达到上限），请先删除一家公司后再创建新公司。',
+            });
+          }
+
+          // 检查游戏币余额
+          const userBalance = await connection.execute(
+            'SELECT game_coins FROM users WHERE id = ?',
+            [userId]
+          );
+          const currentBalance = userBalance[0][0]?.game_coins || 0;
+          if (currentBalance < args.initialCapital) {
+            await connection.rollback();
+            return res.status(400).json({
+              success: false,
+              reply: '游戏币余额不足，无法创建公司。',
+            });
+          }
+
+          // 创建公司
+          const companyResult = await connection.execute(
+            `INSERT INTO companies (owner_id, name, description, max_employees, 
+              workflow_type, initial_capital, current_capital, status, workflow_config) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NULL)`,
+            [userId, args.name, args.description || null, args.maxEmployees, args.workflowType, args.initialCapital, args.initialCapital]
+          );
+          const newCompanyId = (companyResult[0] as any).insertId;
+
+          // 扣除游戏币
+          await connection.execute('UPDATE users SET game_coins = game_coins - ? WHERE id = ?', [args.initialCapital, userId]);
+          const balanceAfter = currentBalance - args.initialCapital;
+          await connection.execute(
+            `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, related_type, related_id) 
+             VALUES (?, 'spend', ?, ?, '创建公司扣除初始资金', 'company', ?)`,
+            [userId, args.initialCapital, balanceAfter, newCompanyId]
+          );
+
+          await connection.commit();
+          await kafkaProducer.send({
+            topic: 'company-events',
+            messages: [{ value: JSON.stringify({ event: 'company_created', companyId: newCompanyId, userId, name: args.name, timestamp: new Date().toISOString() }) }],
+          });
+          await redisClient.del(`user:${userId}:companies`);
+          await redisClient.del(`user:${userId}:balance`);
+
+          logger.info(`用户 ${userId} 通过对话创建了公司 ${newCompanyId}: ${args.name}`);
+
+          // 进入员工创建阶段
+          const REQUIRED_TYPES = ['planner', 'architect', 'artist', 'developer', 'tester', 'music'];
+          res.json({
+            success: true,
+            phase: 'employees',
+            companyId: newCompanyId,
+            createdEmployees: [],
+            requiredEmployees: REQUIRED_TYPES,
+            functionCall: result.functionCall,
+            reply: `公司"${args.name}"创建成功！\n\n现在让我们为公司雇佣必需的6位员工：\n1. 策划（planner）\n2. 架构师（architect）\n3. 美术（artist）\n4. 研发（developer）\n5. 测试（tester）\n6. 音频（music）\n\n请告诉我第一位员工（策划）的信息。`,
+          });
+        } else {
+          // 阶段2：创建员工
+          // 检查员工总数限制（最多30个）
+          const agentCount = await connection.execute(
+            'SELECT COUNT(*) as count FROM employee_agents WHERE id IN (SELECT employee_id FROM company_employees WHERE company_id IN (SELECT id FROM companies WHERE owner_id = ?))',
+            [userId]
+          );
+          const currentAgentCount = agentCount[0][0]?.count || 0;
+          if (currentAgentCount >= 30) {
+            await connection.rollback();
+            return res.status(400).json({
+              success: false,
+              reply: '您的员工数量已达上限（30个），无法继续雇佣。',
+            });
+          }
+
+          // 创建员工
+          const agentResult = await connection.execute(
+            `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
+             VALUES (?, ?, ?, ?, ?, ?, 'available')`,
+            [args.name, args.type, args.dimension, args.ai_model, args.specialization, args.extra_traits || null]
+          );
+          const newAgentId = (agentResult[0] as any).insertId;
+
+          // 关联到公司
+          await connection.execute(
+            `INSERT INTO company_employees (company_id, employee_id, status, hired_at) VALUES (?, ?, 'active', NOW())`,
+            [companyId, newAgentId]
+          );
+          await connection.execute(`UPDATE employee_agents SET status = 'employed' WHERE id = ?`, [newAgentId]);
+
+          await connection.commit();
+          await kafkaProducer.send({
+            topic: 'agent-events',
+            messages: [{ value: JSON.stringify({ event: 'agent_hired', agentId: newAgentId, companyId, userId, name: args.name, type: args.type, timestamp: new Date().toISOString() }) }],
+          });
+          await redisClient.del(`user:${userId}:agents:all:all`);
+          await redisClient.del(`company:${companyId}:employees`);
+
+          logger.info(`用户 ${userId} 为公司 ${companyId} 雇佣了员工 ${newAgentId}: ${args.name} (${args.type})`);
+
+          const REQUIRED_TYPES = ['planner', 'architect', 'artist', 'developer', 'tester', 'music'];
+          const updatedEmployees = [...employeesList, args.type];
+          const remaining = REQUIRED_TYPES.filter(t => !updatedEmployees.includes(t));
+
+          if (remaining.length === 0) {
+            // 全部完成
+            res.json({
+              success: true,
+              phase: 'completed',
+              companyId,
+              createdEmployees: updatedEmployees,
+              functionCall: result.functionCall,
+              reply: `恭喜！员工"${args.name}"（${args.type}）雇佣成功！\n\n🎉 您的公司已经完成组建，所有6位必需员工已就位！现在可以开始制作游戏了。`,
+            });
+          } else {
+            // 继续创建下一个员工
+            const typeNameMap: Record<string, string> = {
+              planner: '策划', architect: '架构师', artist: '美术', developer: '研发', tester: '测试', music: '音频'
+            };
+            const nextType = remaining[0];
+            res.json({
+              success: true,
+              phase: 'employees',
+              companyId,
+              createdEmployees: updatedEmployees,
+              requiredEmployees: REQUIRED_TYPES,
+              remaining,
+              functionCall: result.functionCall,
+              reply: `员工"${args.name}"（${args.type}）雇佣成功！\n\n还需要雇佣 ${remaining.length} 位员工：${remaining.map(t => typeNameMap[t]).join('、')}\n\n请告诉我下一位员工（${typeNameMap[nextType]}）的信息。`,
+            });
+          }
+        }
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+    } else {
+      // 返回 LLM 的回复，继续对话
+      res.json({
+        success: true,
+        phase: currentPhase,
+        companyId,
+        createdEmployees: employeesList,
+        reply: result.reply,
+      });
+    }
+  } catch (error: any) {
+    logger.error('对话式创建公司失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || '对话式创建失败',
+    });
   }
 });
 
@@ -385,18 +584,42 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
 
     const company = companyInfo[0][0];
 
-    // 检查是否有活跃的员工
+    // 获取所有活跃员工
     const activeEmployees = await connection.execute(
-      'SELECT COUNT(*) as count FROM company_employees WHERE company_id = ? AND status = "active"',
-      [id]
+      `SELECT ce.employee_id, ea.name, ea.type, ea.status as agent_status,
+        (SELECT COUNT(*) FROM company_employees WHERE employee_id = ea.id AND company_id != ? AND status = 'active') as is_market_agent
+       FROM company_employees ce
+       JOIN employee_agents ea ON ce.employee_id = ea.id
+       WHERE ce.company_id = ? AND ce.status = 'active'`,
+      [id, id]
     );
 
-    if (activeEmployees[0][0].count > 0) {
-      await connection.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: '公司还有活跃员工，无法解散，请先处理员工' 
-      });
+    // 遣散员工
+    if (Array.isArray(activeEmployees[0]) && activeEmployees[0].length > 0) {
+      for (const emp of activeEmployees[0]) {
+        // 更新公司员工关系状态
+        await connection.execute(
+          'UPDATE company_employees SET status = "terminated", updated_at = NOW() WHERE company_id = ? AND employee_id = ?',
+          [id, emp.employee_id]
+        );
+
+        // 判断员工来源：如果 is_market_agent > 0，说明是从市场购买的
+        if (emp.is_market_agent > 0) {
+          // 市场购买的员工：回流市场（状态改为 available）
+          await connection.execute(
+            'UPDATE employee_agents SET status = "available", updated_at = NOW() WHERE id = ?',
+            [emp.employee_id]
+          );
+          logger.info(`员工 ${emp.employee_id} (${emp.name}) 从公司 ${id} 遣散，回流市场`);
+        } else {
+          // 用户自己创建的员工：待业状态（也是 available）
+          await connection.execute(
+            'UPDATE employee_agents SET status = "available", updated_at = NOW() WHERE id = ?',
+            [emp.employee_id]
+          );
+          logger.info(`员工 ${emp.employee_id} (${emp.name}) 从公司 ${id} 遣散，进入待业状态`);
+        }
+      }
     }
 
     // 解散公司

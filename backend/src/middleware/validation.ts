@@ -252,9 +252,9 @@ export const agentCreationSchema = Joi.object({
        'string.max': '员工姓名长度不能超过50个字符',
        'any.required': '员工姓名是必填项'
      }),
-   type: Joi.string().valid('planner', 'artist', 'developer', 'tester', 'operator').required()
+   type: Joi.string().valid('planner', 'architect', 'artist', 'developer', 'tester', 'operator', 'music').required()
      .messages({
-       'string.valid': '员工类型必须是 planner、artist、developer、tester 或 operator 之一',
+       'string.valid': '员工类型必须是 planner、architect、artist、developer、tester、operator 或 music 之一',
        'any.required': '员工类型是必填项'
      }),
    specialization: Joi.string().max(100).required()
