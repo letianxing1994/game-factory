@@ -12,6 +12,55 @@ import { conversationalService } from '../services/conversationalService';
 
 const router = Router();
 
+// 安全解析 AI 返回的 JSON，处理转义字符和格式问题
+function safeJSONParse(jsonString: string): any {
+  try {
+    // 尝试直接解析
+    return JSON.parse(jsonString);
+  } catch (error) {
+    try {
+      // 清理字符串
+      let cleaned = jsonString
+        .trim()
+        .replace(/\n/g, '')
+        .replace(/\r/g, '')
+        .replace(/\t/g, '');
+      
+      // 检测多个连续的 JSON 对象（如 {...}{...}{...}）
+      // 这种情况下只取第一个对象
+      const firstBrace = cleaned.indexOf('{');
+      if (firstBrace !== -1) {
+        let braceCount = 0;
+        let firstObjectEnd = -1;
+        
+        for (let i = firstBrace; i < cleaned.length; i++) {
+          if (cleaned[i] === '{') braceCount++;
+          else if (cleaned[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              firstObjectEnd = i;
+              break;
+            }
+          }
+        }
+        
+        if (firstObjectEnd !== -1) {
+          cleaned = cleaned.substring(firstBrace, firstObjectEnd + 1);
+        }
+      }
+      
+      return JSON.parse(cleaned);
+    } catch (secondError) {
+      logger.error('JSON 解析失败:', { 
+        original: jsonString,
+        firstError: error instanceof Error ? error.message : 'Unknown',
+        secondError: secondError instanceof Error ? secondError.message : 'Unknown'
+      });
+      throw new Error('AI 返回的参数格式错误');
+    }
+  }
+}
+
 // 创建公司
 router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest, res) => {
   const connection = await getConnection();
@@ -165,8 +214,19 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
         if (chunk.type === 'token') {
           res.write(`data: ${JSON.stringify({ type: 'token', content: chunk.content })}\n\n`);
         } else if (chunk.type === 'function_call') {
-          // 执行函数调用
-          const args = JSON.parse(chunk.functionCall.arguments);
+          // 执行函数调用 - 安全解析 JSON
+          let args: any;
+          try {
+            args = safeJSONParse(chunk.functionCall.arguments);
+          } catch (error) {
+            res.write(`data: ${JSON.stringify({ 
+              type: 'error', 
+              content: error instanceof Error ? error.message : 'AI 返回的参数格式错误' 
+            })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+            return;
+          }
           const connection = await getConnection();
 
           try {
@@ -300,7 +360,16 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
     });
 
     if (result.shouldExecute && result.functionCall) {
-      const args = JSON.parse(result.functionCall.arguments);
+      // 安全解析 JSON
+      let args: any;
+      try {
+        args = safeJSONParse(result.functionCall.arguments);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          reply: error instanceof Error ? error.message : 'AI 返回的参数格式错误',
+        });
+      }
       const connection = await getConnection();
 
       try {
@@ -1193,6 +1262,112 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: '对话处理失败' });
     }
+  }
+});
+
+// 解散公司
+router.delete('/:id/dissolve', authenticate, async (req: AuthRequest, res) => {
+  const connection = await getConnection();
+  
+  try {
+    const companyId = parseInt(req.params.id);
+    const userId = req.user!.id;
+
+    if (isNaN(companyId)) {
+      return res.status(400).json({ success: false, message: '无效的公司ID' });
+    }
+
+    await connection.beginTransaction();
+
+    // 检查公司是否存在且属于当前用户
+    const companyResult = await connection.execute(
+      'SELECT * FROM companies WHERE id = ? AND owner_id = ?',
+      [companyId, userId]
+    );
+
+    if (!Array.isArray(companyResult[0]) || companyResult[0].length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: '公司不存在或无权限操作' });
+    }
+
+    const company = companyResult[0][0] as any;
+
+    // 获取公司的所有员工
+    const employeesResult = await connection.execute(
+      `SELECT a.* 
+       FROM agents a 
+       WHERE a.company_id = ? AND a.status = 'employed'`,
+      [companyId]
+    );
+
+    const employees = Array.isArray(employeesResult[0]) ? employeesResult[0] : [];
+
+    // 处理员工：解除雇佣关系，将状态改为 available
+    for (const employee of employees as any[]) {
+      // 将员工的 company_id 设为 NULL，状态改为 available
+      // 如果是用户自己创建的员工（owner_id == userId），保留给用户
+      // 如果是从市场购买的员工（owner_id != userId），流入市场
+      await connection.execute(
+        'UPDATE agents SET company_id = NULL, status = ? WHERE id = ?',
+        ['available', employee.id]
+      );
+    }
+
+    // 更新公司状态为已解散
+    await connection.execute(
+      'UPDATE companies SET status = ?, dissolved_at = NOW() WHERE id = ?',
+      ['dissolved', companyId]
+    );
+
+    // 返还剩余资金给用户
+    if (company.current_capital > 0) {
+      const userBalanceResult = await connection.execute(
+        'SELECT game_coins FROM users WHERE id = ?',
+        [userId]
+      );
+      const currentBalance = userBalanceResult[0][0]?.game_coins || 0;
+
+      await connection.execute(
+        'UPDATE users SET game_coins = game_coins + ? WHERE id = ?',
+        [company.current_capital, userId]
+      );
+
+      const newBalance = currentBalance + company.current_capital;
+
+      // 记录交易
+      await connection.execute(
+        `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, related_type, related_id) 
+         VALUES (?, 'refund', ?, ?, '公司解散退还剩余资金', 'company', ?)`,
+        [userId, company.current_capital, newBalance, companyId]
+      );
+    }
+
+    await connection.commit();
+
+    // 清除缓存
+    await redisClient.del(`user:${userId}:companies`);
+    await redisClient.del(`user:${userId}:balance`);
+    await redisClient.del(`company:${companyId}:employees`);
+
+    logger.info(`用户 ${userId} 解散了公司 ${companyId}: ${company.name}, 退还资金 ${company.current_capital}, 处理员工 ${employees.length} 名`);
+
+    res.json({
+      success: true,
+      message: '公司已成功解散',
+      data: {
+        refundAmount: company.current_capital,
+        employeesProcessed: employees.length,
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    logger.error('解散公司失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : '解散公司失败',
+    });
+  } finally {
+    connection.release();
   }
 });
 

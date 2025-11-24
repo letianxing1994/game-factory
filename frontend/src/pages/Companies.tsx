@@ -587,6 +587,55 @@ const Companies: React.FC = () => {
     }
   }
 
+  const handleDissolveCompany = async () => {
+    if (!selectedCompanyId) return
+
+    const selectedCompany = companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId)
+    if (!selectedCompany) return
+
+    Modal.confirm({
+      title: '确认解散公司？',
+      content: (
+        <div>
+          <p>您确定要解散公司「{selectedCompany.name}」吗？</p>
+          <p style={{ color: '#52c41a', fontWeight: 600 }}>✅ 剩余资金：{selectedCompany.currentCapital} 游戏币将退回您的账户</p>
+          <p style={{ color: '#faad14' }}>⚠️ 公司员工将被遣散或流入市场</p>
+          <p style={{ color: '#ff4d4f' }}>❌ 此操作不可撤销！</p>
+        </div>
+      ),
+      okText: '确认解散',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const token = localStorage.getItem('token')
+          const response = await fetch(`${API_BASE_URL}/companies/${selectedCompanyId}/dissolve`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+          })
+
+          const data = await response.json()
+
+          if (data.success) {
+            message.success(
+              `公司已解散！退还资金 ${data.data.refundAmount} 游戏币，处理员工 ${data.data.employeesProcessed} 名`
+            )
+            companiesRes.refetch()
+            setSelectedCompanyId(undefined)
+          } else {
+            message.error(data.message || '解散公司失败')
+          }
+        } catch (error) {
+          console.error('解散公司失败:', error)
+          message.error('解散公司失败，请重试')
+        }
+      },
+    })
+  }
+
   const handleConversationalSend = async () => {
     if (!conversationalInput.trim() || conversationalLoading) return
 
@@ -847,6 +896,14 @@ const Companies: React.FC = () => {
             onClick={() => setFundModalVisible(true)}
           >
             💰 注资
+          </Button>
+          <Button
+            danger
+            size="large"
+            disabled={!selectedCompanyId}
+            onClick={handleDissolveCompany}
+          >
+            🔥 解散公司
           </Button>
           <Select
             value={selectedCompanyId}
