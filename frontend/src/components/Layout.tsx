@@ -128,6 +128,38 @@ const Layout: React.FC = () => {
             }}>🎮</h1>
           )}
         </div>
+        {/* 折叠按钮 - 放在标题下方 */}
+        <div style={{
+          padding: '12px',
+          display: 'flex',
+          justifyContent: collapsed ? 'center' : 'flex-end',
+          borderBottom: '1px solid rgba(200, 140, 80, 0.2)'
+        }}>
+          <button
+            onClick={toggleSidebar}
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(200, 140, 80, 0.3)',
+              borderRadius: '4px',
+              padding: '6px 10px',
+              cursor: 'pointer',
+              color: '#fff5e6',
+              fontSize: '16px',
+              transition: 'all 0.3s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+            }}
+          >
+            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          </button>
+        </div>
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
@@ -135,9 +167,9 @@ const Layout: React.FC = () => {
           onClick={handleMenuClick}
           className="border-r-0"
           style={{ 
-            height: 'calc(100vh - 80px)',
+            height: 'calc(100vh - 130px)',
             borderRight: 0,
-            paddingTop: '20px',
+            paddingTop: '12px',
             fontSize: '16px'
           }}
           inlineCollapsed={collapsed}
@@ -154,39 +186,13 @@ const Layout: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={toggleSidebar}
-              style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                color: '#fff5e6',
-                fontSize: '18px',
-                transition: 'all 0.3s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-              }}
-            >
-              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </button>
-            <div style={{
-              fontSize: '20px',
-              fontWeight: 600,
-              color: '#fff5e6',
-              textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
-            }}>
-              {menuItems.find(item => item.key === location.pathname)?.label || '游戏工厂'}
-            </div>
+          <div style={{
+            fontSize: '20px',
+            fontWeight: 600,
+            color: '#fff5e6',
+            textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)'
+          }}>
+            {menuItems.find(item => item.key === location.pathname)?.label || '游戏工厂'}
           </div>
           <div className="flex items-center space-x-4">
             <span style={{ color: '#e8c468' }}>欢迎，{user?.username}</span>

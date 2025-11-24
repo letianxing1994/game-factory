@@ -11,6 +11,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -184,6 +185,11 @@ const Agents: React.FC = () => {
   const [selectedDimension, setSelectedDimension] = useState<string>('')
   const [previewConfirmVisible, setPreviewConfirmVisible] = useState(false)
   const [pendingPreviewAgent, setPendingPreviewAgent] = useState<EmployeeAgent | null>(null)
+  const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
+  const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
+  const [conversationalInput, setConversationalInput] = useState('')
+  const [conversationalLoading, setConversationalLoading] = useState(false)
+  const [selectedCompanyForConv, setSelectedCompanyForConv] = useState<number>()
 
   const { data: agentsRes, refetch } = useQuery(
     ['agents', 'mine'],
@@ -321,41 +327,208 @@ const Agents: React.FC = () => {
     }
   }
 
+  const handleConversationalAgentSend = async () => {
+    if (!conversationalInput.trim()) {
+      message.warning('请输入内容')
+      return
+    }
+
+    if (!selectedCompanyForConv) {
+      message.warning('请先选择要分配的公司')
+      return
+    }
+
+    const userMessage = conversationalInput.trim()
+    setConversationalInput('')
+    
+    // 添加用户消息到对话
+    const newMessages = [
+      ...conversationalMessages,
+      { role: 'user' as const, content: userMessage }
+    ]
+    setConversationalMessages(newMessages)
+    setConversationalLoading(true)
+
+    try {
+      const res = await apiClient.post<{
+        success: boolean
+        agentId?: number
+        reply?: string
+        message?: string
+      }>('/agents/conversational-create', {
+        companyId: selectedCompanyForConv,
+        model: 'gpt-4o',
+        messages: newMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      })
+
+      if (res.success) {
+        const assistantReply = res.reply || res.message || '员工创建成功'
+        
+        // 添加助手回复
+        setConversationalMessages([
+          ...newMessages,
+          { role: 'assistant', content: assistantReply }
+        ])
+
+        // 如果创建成功，刷新列表
+        if (res.agentId) {
+          message.success('🎉 员工创建成功！')
+          setTimeout(() => {
+            setCreateModalOpen(false)
+            setCreateMode('form')
+            setConversationalMessages([])
+            setSelectedCompanyForConv(undefined)
+            refetch()
+          }, 1500)
+        }
+      } else {
+        message.error(res.message || '操作失败')
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '对话失败')
+      // 仍然显示错误消息
+      setConversationalMessages([
+        ...newMessages,
+        { role: 'assistant', content: '抱歉，发生了错误：' + (error?.response?.data?.message || '未知错误') }
+      ])
+    } finally {
+      setConversationalLoading(false)
+    }
+  }
+
   const columns = [
     { title: '姓名', dataIndex: 'name' },
     {
       title: '类型',
       dataIndex: 'type',
-      render: (value: EmployeeAgent['type'], record: EmployeeAgent) => (
-        <Space direction="vertical" size={0}>
-          <Tag color="blue">{value}</Tag>
-          {record.type === 'artist' && record.dimension && (
-            <Tag color="purple" style={{ fontSize: '11px' }}>
-              {record.dimension === '2d' ? '2D美术' : '3D美术'}
-            </Tag>
-          )}
-        </Space>
-      ),
+      render: (value: EmployeeAgent['type'], record: EmployeeAgent) => {
+        // 类型颜色映射 - 使用更柔和的暗色调
+        const typeColorMap: Record<EmployeeAgent['type'], string> = {
+          planner: 'rgba(64, 169, 255, 0.3)',
+          architect: 'rgba(19, 194, 194, 0.3)',
+          artist: 'rgba(235, 47, 150, 0.3)',
+          developer: 'rgba(82, 196, 26, 0.3)',
+          tester: 'rgba(250, 140, 22, 0.3)',
+          operator: 'rgba(114, 46, 209, 0.3)',
+          music: 'rgba(250, 173, 20, 0.3)',
+        }
+        const borderColorMap: Record<EmployeeAgent['type'], string> = {
+          planner: 'rgba(64, 169, 255, 0.6)',
+          architect: 'rgba(19, 194, 194, 0.6)',
+          artist: 'rgba(235, 47, 150, 0.6)',
+          developer: 'rgba(82, 196, 26, 0.6)',
+          tester: 'rgba(250, 140, 22, 0.6)',
+          operator: 'rgba(114, 46, 209, 0.6)',
+          music: 'rgba(250, 173, 20, 0.6)',
+        }
+        const bgColor = typeColorMap[value] || 'rgba(217, 217, 217, 0.2)'
+        const borderColor = borderColorMap[value] || 'rgba(217, 217, 217, 0.5)'
+        return (
+          <Space direction="vertical" size={0}>
+            <span style={{ 
+              display: 'inline-block',
+              background: `linear-gradient(135deg, ${bgColor} 0%, rgba(40, 25, 15, 0.4) 100%)`,
+              color: '#d4af37',
+              border: `1px solid ${borderColor}`,
+              fontWeight: 600,
+              padding: '0 7px',
+              fontSize: '12px',
+              lineHeight: '20px',
+              borderRadius: '3px',
+              whiteSpace: 'nowrap',
+              boxShadow: 'inset 0 1px 0 rgba(255, 200, 120, 0.15), 0 2px 4px rgba(0, 0, 0, 0.4)',
+              textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+              backdropFilter: 'blur(4px)'
+            }}>{value}</span>
+            {record.type === 'artist' && record.dimension && (
+              <span style={{ 
+                display: 'inline-block',
+                fontSize: '11px',
+                background: 'linear-gradient(135deg, rgba(255, 122, 69, 0.3) 0%, rgba(40, 25, 15, 0.4) 100%)',
+                color: '#d4af37',
+                border: '1px solid rgba(255, 122, 69, 0.6)',
+                fontWeight: 600,
+                padding: '0 7px',
+                lineHeight: '18px',
+                borderRadius: '3px',
+                whiteSpace: 'nowrap',
+                marginTop: '2px',
+                boxShadow: 'inset 0 1px 0 rgba(255, 200, 120, 0.15), 0 2px 4px rgba(0, 0, 0, 0.4)',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+                backdropFilter: 'blur(4px)'
+              }}>
+                {record.dimension === '2d' ? '2D美术' : '3D美术'}
+              </span>
+            )}
+          </Space>
+        )
+      },
     },
     {
       title: 'AI模型',
       dataIndex: 'ai_model',
       render: (model: string, record: EmployeeAgent) => {
+        // 获取模型颜色的辅助函数 - 使用更柔和的暗色调
+        const getModelColor = (modelName: string): { bg: string; border: string } => {
+          if (!modelName || modelName === '默认模型') {
+            return { bg: 'rgba(217, 217, 217, 0.2)', border: 'rgba(217, 217, 217, 0.5)' }
+          }
+          const lowerModel = modelName.toLowerCase()
+          if (lowerModel.includes('gpt-5')) return { bg: 'rgba(235, 47, 150, 0.3)', border: 'rgba(235, 47, 150, 0.6)' }
+          if (lowerModel.includes('gpt-4o')) return { bg: 'rgba(114, 46, 209, 0.3)', border: 'rgba(114, 46, 209, 0.6)' }
+          if (lowerModel.includes('gpt')) return { bg: 'rgba(47, 84, 235, 0.3)', border: 'rgba(47, 84, 235, 0.6)' }
+          if (lowerModel.includes('claude')) return { bg: 'rgba(19, 194, 194, 0.3)', border: 'rgba(19, 194, 194, 0.6)' }
+          if (lowerModel.includes('deepseek')) return { bg: 'rgba(24, 144, 255, 0.3)', border: 'rgba(24, 144, 255, 0.6)' }
+          if (lowerModel.includes('dall-e')) return { bg: 'rgba(82, 196, 26, 0.3)', border: 'rgba(82, 196, 26, 0.6)' }
+          if (lowerModel.includes('banana')) return { bg: 'rgba(250, 140, 22, 0.3)', border: 'rgba(250, 140, 22, 0.6)' }
+          if (lowerModel.includes('midjourney')) return { bg: 'rgba(255, 77, 79, 0.3)', border: 'rgba(255, 77, 79, 0.6)' }
+          if (lowerModel.includes('stable')) return { bg: 'rgba(160, 217, 17, 0.3)', border: 'rgba(160, 217, 17, 0.6)' }
+          if (lowerModel.includes('meshy')) return { bg: 'rgba(250, 173, 20, 0.3)', border: 'rgba(250, 173, 20, 0.6)' }
+          if (lowerModel.includes('luma')) return { bg: 'rgba(235, 47, 150, 0.3)', border: 'rgba(235, 47, 150, 0.6)' }
+          if (lowerModel.includes('rodin')) return { bg: 'rgba(245, 34, 45, 0.3)', border: 'rgba(245, 34, 45, 0.6)' }
+          return { bg: 'rgba(47, 84, 235, 0.3)', border: 'rgba(47, 84, 235, 0.6)' }
+        }
+
+        const createColoredTag = (text: string, colors: { bg: string; border: string }) => (
+          <span style={{
+            display: 'inline-block',
+            background: `linear-gradient(135deg, ${colors.bg} 0%, rgba(40, 25, 15, 0.4) 100%)`,
+            color: '#d4af37',
+            border: `1px solid ${colors.border}`,
+            fontWeight: 600,
+            padding: '0 7px',
+            fontSize: '12px',
+            lineHeight: '20px',
+            borderRadius: '3px',
+            whiteSpace: 'nowrap',
+            boxShadow: 'inset 0 1px 0 rgba(255, 200, 120, 0.15), 0 2px 4px rgba(0, 0, 0, 0.4)',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(4px)'
+          }}>{text}</span>
+        )
+
         // 3D美术Agent显示双模型
         if (record.type === 'artist' && record.dimension === '3d') {
+          const model2d = record.ai_model_2d || 'dall-e-3'
+          const model3d = record.ai_model_3d || 'meshy-4'
           return (
             <Space direction="vertical" size={2}>
-              <Tag color="green">{record.ai_model_2d || 'dall-e-3'} (贴图)</Tag>
-              <Tag color="cyan">{record.ai_model_3d || 'meshy-4'} (模型)</Tag>
+              {createColoredTag(`${model2d} (贴图)`, getModelColor(model2d))}
+              {createColoredTag(`${model3d} (模型)`, getModelColor(model3d))}
             </Space>
           )
         }
         // 2D美术Agent
         if (record.type === 'artist' && record.dimension === '2d') {
-          return <Tag color="green">{record.ai_model_2d || 'dall-e-3'}</Tag>
+          const model2d = record.ai_model_2d || 'dall-e-3'
+          return createColoredTag(model2d, getModelColor(model2d))
         }
         // 其他Agent显示单一模型
-        return <Tag>{model || '默认模型'}</Tag>
+        const displayModel = record.ai_model || model || '默认模型'
+        return createColoredTag(displayModel, getModelColor(displayModel))
       },
     },
     { title: '专业', dataIndex: 'specialization' },
@@ -377,6 +550,55 @@ const Agents: React.FC = () => {
             }}
           >
             试运行
+          </Button>
+          <Button
+            type="link"
+            onClick={() => {
+              Modal.confirm({
+                title: '发布到市场',
+                content: (
+                  <div>
+                    <p>确定要将员工「{record.name}」发布到市场吗？</p>
+                    <Input
+                      type="number"
+                      placeholder="请输入售价（游戏币，最低100）"
+                      min={100}
+                      id="sell-price-input"
+                      style={{ marginTop: '12px' }}
+                    />
+                  </div>
+                ),
+                okText: '发布',
+                cancelText: '取消',
+                onOk: async () => {
+                  const priceInput = document.getElementById('sell-price-input') as HTMLInputElement
+                  const price = parseInt(priceInput?.value || '0')
+                  
+                  if (price < 100) {
+                    message.error('售价不能低于100游戏币')
+                    return Promise.reject()
+                  }
+                  
+                  try {
+                    const res = await apiClient.post<{ success: boolean; message: string }>(
+                      `/agents/${record.id}/sell`,
+                      { price }
+                    )
+                    if (res.success) {
+                      message.success('已发布到市场')
+                      refetch()
+                    } else {
+                      message.error(res.message || '发布失败')
+                    }
+                  } catch (error: any) {
+                    message.error(error?.response?.data?.message || '发布失败')
+                    return Promise.reject()
+                  }
+                },
+              })
+            }}
+          >
+            发布
           </Button>
           <Button
             type="link"
@@ -538,16 +760,21 @@ const Agents: React.FC = () => {
         open={createModalOpen}
         onCancel={() => {
           setCreateModalOpen(false)
+          setCreateMode('form')
+          setConversationalMessages([])
+          setSelectedCompanyForConv(undefined)
           createForm.resetFields()
         }}
         footer={null}
-        width={600}
+        width={700}
         destroyOnClose
       >
-        <Form 
-          form={createForm} 
-          layout="vertical" 
-          onFinish={handleCreateAgent}
+        <Tabs activeKey={createMode} onChange={(key) => setCreateMode(key as 'form' | 'chat')}>
+          <Tabs.TabPane tab="📝 表单创建" key="form">
+            <Form 
+              form={createForm} 
+              layout="vertical" 
+              onFinish={handleCreateAgent}
           onValuesChange={(changedValues) => {
             if (changedValues.type) {
               setSelectedType(changedValues.type)
@@ -697,10 +924,14 @@ const Agents: React.FC = () => {
 
           <Alert
             type="info"
-            message="提示"
-            description="员工可以立即分配到公司开始工作。AI模型和额外特点会影响agent的实际执行效果。"
+            message={<span style={{ color: '#FFD76E' }}>提示</span>}
+            description={<span style={{ color: '#d4c5a9' }}>员工可以立即分配到公司开始工作。AI模型和额外特点会影响agent的实际执行效果。</span>}
             showIcon
-            style={{ marginBottom: 16 }}
+            style={{ 
+              marginBottom: 16,
+              background: 'rgba(40, 25, 15, 0.6)',
+              border: '1px solid rgba(200, 140, 80, 0.3)'
+            }}
           />
 
           <Form.Item>
@@ -718,7 +949,107 @@ const Agents: React.FC = () => {
               </Button>
             </Space>
           </Form.Item>
-        </Form>
+            </Form>
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="💬 对话创建" key="chat">
+            <div style={{ marginBottom: 16 }}>
+              <Alert
+                message={<span style={{ color: '#FFD76E' }}>智能对话助手</span>}
+                description={<span style={{ color: '#d4c5a9' }}>通过对话，我将帮您创建员工并分配到指定公司。</span>}
+                type="info"
+                showIcon
+                style={{ 
+                  background: 'rgba(40, 25, 15, 0.6)',
+                  border: '1px solid rgba(200, 140, 80, 0.3)'
+                }}
+              />
+              <div style={{ marginTop: 12 }}>
+                <Text style={{ color: '#c8a060' }}>分配到公司：</Text>
+                <Select 
+                  placeholder="请选择公司" 
+                  style={{ width: '100%', marginTop: 8 }}
+                  value={selectedCompanyForConv}
+                  onChange={setSelectedCompanyForConv}
+                >
+                  {myCompanies.map((company: any) => (
+                    <Select.Option key={company.id} value={company.id}>
+                      {company.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <div style={{ 
+              height: '350px', 
+              overflowY: 'auto', 
+              border: '1px solid rgba(200, 140, 80, 0.3)', 
+              borderRadius: '4px', 
+              padding: '12px',
+              marginBottom: '12px',
+              background: 'rgba(40, 25, 15, 0.3)'
+            }}>
+              {conversationalMessages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '80px 20px', color: '#c8a060' }}>
+                  <Text style={{ fontSize: '16px' }}>👋 你好！我是雇佣助手</Text><br/>
+                  <Text style={{ fontSize: '14px', color: '#d4c5a9' }}>请告诉我您需要什么类型的员工？</Text>
+                </div>
+              ) : (
+                conversationalMessages.map((msg, idx) => (
+                  <div key={idx} style={{ 
+                    marginBottom: '12px',
+                    display: 'flex',
+                    justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                  }}>
+                    <div style={{
+                      maxWidth: '80%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: msg.role === 'user' 
+                        ? 'linear-gradient(135deg, rgba(180, 120, 60, 0.6), rgba(120, 70, 30, 0.7))'
+                        : 'rgba(40, 25, 15, 0.6)',
+                      border: '1px solid rgba(200, 140, 80, 0.3)',
+                      color: '#f5e6d3'
+                    }}>
+                      <Text style={{ color: msg.role === 'user' ? '#FFD76E' : '#e8c468', fontSize: '12px' }}>
+                        {msg.role === 'user' ? '👤 您' : '🤖 助手'}
+                      </Text>
+                      <div style={{ marginTop: '4px', color: '#f5e6d3', whiteSpace: 'pre-wrap' }}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {conversationalLoading && (
+                <div style={{ textAlign: 'center', color: '#c8a060' }}>
+                  <Text>🤔 思考中...</Text>
+                </div>
+              )}
+            </div>
+            <Input.TextArea
+              rows={3}
+              value={conversationalInput}
+              onChange={(e) => setConversationalInput(e.target.value)}
+              placeholder="输入您的想法，按Ctrl+Enter或点击发送..."
+              onKeyDown={(e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                  handleConversationalAgentSend()
+                }
+              }}
+              disabled={conversationalLoading || !selectedCompanyForConv}
+            />
+            <div style={{ marginTop: 12, textAlign: 'right' }}>
+              <Button 
+                type="primary" 
+                onClick={handleConversationalAgentSend}
+                loading={conversationalLoading}
+                disabled={!selectedCompanyForConv}
+              >
+                💬 发送
+              </Button>
+            </div>
+          </Tabs.TabPane>
+        </Tabs>
       </Modal>
     </div>
   )

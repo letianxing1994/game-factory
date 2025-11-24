@@ -16,6 +16,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -263,6 +264,15 @@ const Companies: React.FC = () => {
   const [loadingQueue, setLoadingQueue] = useState(false)
   const [createCompanyModalVisible, setCreateCompanyModalVisible] = useState(false)
   const [fundModalVisible, setFundModalVisible] = useState(false)
+  const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
+  const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
+  const [conversationalInput, setConversationalInput] = useState('')
+  const [conversationalLoading, setConversationalLoading] = useState(false)
+  const [conversationalState, setConversationalState] = useState<{
+    phase?: string
+    companyId?: number
+    createdEmployees?: string[]
+  }>({})
   const [controlModal, setControlModal] = useState<StageControlState>({
     visible: false,
     action: 'pause',
@@ -576,6 +586,86 @@ const Companies: React.FC = () => {
     }
   }
 
+  const handleConversationalSend = async () => {
+    if (!conversationalInput.trim()) {
+      message.warning('请输入内容')
+      return
+    }
+
+    const userMessage = conversationalInput.trim()
+    setConversationalInput('')
+    
+    // 添加用户消息到对话
+    const newMessages = [
+      ...conversationalMessages,
+      { role: 'user' as const, content: userMessage }
+    ]
+    setConversationalMessages(newMessages)
+    setConversationalLoading(true)
+
+    try {
+      const res = await apiClient.post<{
+        success: boolean
+        phase?: string
+        companyId?: number
+        createdEmployees?: string[]
+        reply?: string
+        message?: string
+      }>('/companies/conversational-create', {
+        model: 'gpt-4o',
+        messages: newMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        phase: conversationalState.phase || 'company',
+        companyId: conversationalState.companyId,
+        createdEmployees: conversationalState.createdEmployees || []
+      })
+
+      if (res.success) {
+        const assistantReply = res.reply || res.message || '操作成功'
+        
+        // 添加助手回复
+        setConversationalMessages([
+          ...newMessages,
+          { role: 'assistant', content: assistantReply }
+        ])
+
+        // 更新状态
+        if (res.phase) {
+          setConversationalState({
+            phase: res.phase,
+            companyId: res.companyId,
+            createdEmployees: res.createdEmployees || []
+          })
+        }
+
+        // 如果完成，关闭弹窗并刷新
+        if (res.phase === 'completed') {
+          message.success('🎉 公司创建完成！')
+          setTimeout(() => {
+            setCreateCompanyModalVisible(false)
+            setCreateMode('form')
+            setConversationalMessages([])
+            setConversationalState({})
+            window.location.reload()
+          }, 2000)
+        }
+      } else {
+        message.error(res.message || '操作失败')
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '对话失败')
+      // 仍然显示错误消息
+      setConversationalMessages([
+        ...newMessages,
+        { role: 'assistant', content: '抱歉，发生了错误：' + (error?.response?.data?.message || '未知错误') }
+      ])
+    } finally {
+      setConversationalLoading(false)
+    }
+  }
+
   const handleInjectFunds = async (values: { amount: number }) => {
     if (!selectedCompanyId) return
 
@@ -709,7 +799,7 @@ const Companies: React.FC = () => {
         </Title>
         <Space>
           <Button type="primary" size="large" onClick={() => setCreateCompanyModalVisible(true)}>
-            ✨ 创建新公司
+            ✨ 创建公司
           </Button>
           <Button
             type="default"
@@ -726,6 +816,7 @@ const Companies: React.FC = () => {
             placeholder="🏛️ 选择公司"
             style={{ minWidth: 220 }}
             size="large"
+            className="company-select"
           />
         </Space>
       </div>
@@ -793,10 +884,14 @@ const Companies: React.FC = () => {
       >
         {!selectedCompanyId ? (
           <Alert
-            message="请先创建公司"
-            description="您需要先创建一个游戏开发公司，然后才能启动项目。点击右上角的「创建新公司」按钮开始。"
+            message={<span style={{ color: '#FFD76E' }}>请先创建公司</span>}
+            description={<span style={{ color: '#d4c5a9' }}>您需要先创建一个游戏开发公司，然后才能启动项目。点击右上角的「创建公司」按钮开始。</span>}
             type="warning"
             showIcon
+            style={{
+              background: 'rgba(40, 25, 15, 0.6)',
+              border: '1px solid rgba(200, 140, 80, 0.3)'
+            }}
           />
         ) : (
           <Form
@@ -809,11 +904,15 @@ const Companies: React.FC = () => {
             }}
           >
             <Alert
-              message={`正在为公司「${selectedCompany?.name}」创建游戏项目`}
-              description="填写项目信息后，将提交到生产线由您的AI员工团队开发"
+              message={<span style={{ color: '#FFD76E' }}>{`正在为公司「${selectedCompany?.name}」创建游戏项目`}</span>}
+              description={<span style={{ color: '#d4c5a9' }}>填写项目信息后，将提交到生产线由您的AI员工团队开发</span>}
               type="info"
               showIcon
-              style={{ marginBottom: 16 }}
+              style={{ 
+                marginBottom: 16,
+                background: 'rgba(40, 25, 15, 0.6)',
+                border: '1px solid rgba(200, 140, 80, 0.3)'
+              }}
             />
             <Row gutter={16}>
               <Col xs={24} md={12}>
@@ -839,16 +938,20 @@ const Companies: React.FC = () => {
             <Row gutter={16}>
               <Col xs={24}>
                 <Form.Item name="description" label="📝 项目需求描述">
-                  <Input.TextArea rows={4} placeholder="描述您想要制作的游戏，例如：一款中世纪魔幻风格的RPG游戏，玩家扮演勇者拯救王国..." />
+                  <Input.TextArea rows={4} placeholder="可选：描述您的项目愿景..." />
                 </Form.Item>
               </Col>
             </Row>
             <Alert
-              message="💡 智能参数识别"
-              description="系统会根据您分配的策划、美术、技术等Agent的专业方向自动确定项目参数（游戏类型、维度、画风等）。如需调整Agent属性，请前往「员工Agent管理」页面。"
+              message={<span style={{ color: '#FFD76E' }}>💡 智能参数识别</span>}
+              description={<span style={{ color: '#d4c5a9' }}>系统会根据您分配的策划、美术、技术等Agent的专业方向自动确定项目参数（游戏类型、维度、画风等）。如需调整Agent属性，请前往「员工Agent管理」页面。</span>}
               type="info"
               showIcon
-              style={{ marginBottom: 16 }}
+              style={{ 
+                marginBottom: 16,
+                background: 'rgba(40, 25, 15, 0.6)',
+                border: '1px solid rgba(200, 140, 80, 0.3)'
+              }}
             />
             <Row gutter={16}>
               <Col xs={24} md={12}>
@@ -889,7 +992,16 @@ const Companies: React.FC = () => {
         }
       >
         {jobList.length === 0 ? (
-          <Alert message="暂无运行中的任务，提交后可在此查看进度" type="info" showIcon />
+          <Alert 
+            message={<span style={{ color: '#FFD76E' }}>暂无运行中的任务</span>}
+            description={<span style={{ color: '#d4c5a9' }}>提交后可在此查看进度</span>}
+            type="info" 
+            showIcon 
+            style={{
+              background: 'rgba(40, 25, 15, 0.6)',
+              border: '1px solid rgba(200, 140, 80, 0.3)'
+            }}
+          />
         ) : (
           jobList.map((job) => (
             <Card
@@ -1097,64 +1209,151 @@ const Companies: React.FC = () => {
       <Modal
         open={createCompanyModalVisible}
         title="🏢 创建游戏开发公司"
-        okText="✨ 立即创建"
+        okText={createMode === 'form' ? "✨ 立即创建" : "💬 发送"}
         cancelText="取消"
-        width={600}
-        onOk={() => companyForm.submit()}
+        width={700}
+        onOk={() => {
+          if (createMode === 'form') {
+            companyForm.submit()
+          } else {
+            handleConversationalSend()
+          }
+        }}
         onCancel={() => {
           setCreateCompanyModalVisible(false)
+          setCreateMode('form')
+          setConversationalMessages([])
+          setConversationalInput('')
+          setConversationalState({ phase: 'company', companyId: undefined, createdEmployees: [] })
           companyForm.resetFields()
         }}
       >
-        <Form
-          form={companyForm}
-          layout="vertical"
-          onFinish={handleCreateCompany}
-          initialValues={{
-            maxEmployees: 10,
-            workflowType: 'linear',
-            initialCapital: 1000,
-          }}
-        >
-          <Form.Item
-            name="name"
-            label="公司名称"
-            rules={[{ required: true, message: '请输入公司名称' }]}
-          >
-            <Input placeholder="例如：银河游戏工作室" />
-          </Form.Item>
-          <Form.Item name="description" label="公司简介">
-            <Input.TextArea rows={3} placeholder="简要描述公司定位和目标" />
-          </Form.Item>
-          <Form.Item
-            name="maxEmployees"
-            label="最大员工数"
-            rules={[{ required: true, message: '请输入最大员工数' }]}
-          >
-            <InputNumber min={1} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="workflowType"
-            label="默认工作流模式"
-            rules={[{ required: true, message: '请选择工作流模式' }]}
-          >
-            <Select
-              options={[
-                { label: '线性流程（顺序执行）', value: 'linear' },
-                { label: '反馈循环（迭代优化）', value: 'feedback' },
-                { label: '并发模式（并行开发）', value: 'concurrent' },
-              ]}
+        <Tabs activeKey={createMode} onChange={(key) => setCreateMode(key as 'form' | 'chat')}>
+          <Tabs.TabPane tab="📝 表单创建" key="form">
+            <Form
+              form={companyForm}
+              layout="vertical"
+              onFinish={handleCreateCompany}
+              initialValues={{
+                maxEmployees: 10,
+                workflowType: 'linear',
+                initialCapital: 1000,
+              }}
+            >
+              <Form.Item
+                name="name"
+                label="公司名称"
+                rules={[{ required: true, message: '请输入公司名称' }]}
+              >
+                <Input placeholder="例如：银河游戏工作室" />
+              </Form.Item>
+              <Form.Item name="description" label="公司简介">
+                <Input.TextArea rows={3} placeholder="简要描述公司定位和目标" />
+              </Form.Item>
+              <Form.Item
+                name="maxEmployees"
+                label="最大员工数"
+                rules={[{ required: true, message: '请输入最大员工数' }]}
+              >
+                <InputNumber min={1} max={100} style={{ width: '100%' }} placeholder="10" className="custom-input-number" />
+              </Form.Item>
+              <Form.Item
+                name="workflowType"
+                label="默认工作流模式"
+                rules={[{ required: true, message: '请选择工作流模式' }]}
+              >
+                <Select
+                  options={[
+                    { label: '线性流程（顺序执行）', value: 'linear' },
+                    { label: '反馈循环（迭代优化）', value: 'feedback' },
+                    { label: '并发模式（并行开发）', value: 'concurrent' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="initialCapital"
+                label="初始资金（游戏币）"
+                rules={[{ required: true, message: '请输入初始资金' }]}
+                tooltip="将从您的个人账户扣除"
+              >
+                <InputNumber min={100} max={100000} style={{ width: '100%' }} placeholder="1000" className="custom-input-number" />
+              </Form.Item>
+            </Form>
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="💬 对话创建" key="chat">
+            <div style={{ marginBottom: 16 }}>
+              <Alert
+                message={<span style={{ color: '#FFD76E' }}>智能对话助手</span>}
+                description={<span style={{ color: '#d4c5a9' }}>通过对话，我将帮您创建公司并雇佣6位必需员工（策划、架构师、美术、研发、测试、音频）。</span>}
+                type="info"
+                showIcon
+                style={{ 
+                  background: 'rgba(40, 25, 15, 0.6)',
+                  border: '1px solid rgba(200, 140, 80, 0.3)'
+                }}
+              />
+            </div>
+            <div style={{ 
+              height: '400px', 
+              overflowY: 'auto', 
+              border: '1px solid rgba(200, 140, 80, 0.3)', 
+              borderRadius: '4px', 
+              padding: '12px',
+              marginBottom: '12px',
+              background: 'rgba(40, 25, 15, 0.3)'
+            }}>
+              {conversationalMessages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '80px 20px', color: '#c8a060' }}>
+                  <Text style={{ fontSize: '16px' }}>👋 你好！我是创建助手</Text><br/>
+                  <Text style={{ fontSize: '14px', color: '#d4c5a9' }}>请告诉我您想创建什么样的公司？</Text>
+                </div>
+              ) : (
+                conversationalMessages.map((msg, idx) => (
+                  <div key={idx} style={{ 
+                    marginBottom: '12px',
+                    display: 'flex',
+                    justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                  }}>
+                    <div style={{
+                      maxWidth: '80%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: msg.role === 'user' 
+                        ? 'linear-gradient(135deg, rgba(180, 120, 60, 0.6), rgba(120, 70, 30, 0.7))'
+                        : 'rgba(40, 25, 15, 0.6)',
+                      border: '1px solid rgba(200, 140, 80, 0.3)',
+                      color: '#f5e6d3'
+                    }}>
+                      <Text style={{ color: msg.role === 'user' ? '#FFD76E' : '#e8c468', fontSize: '12px' }}>
+                        {msg.role === 'user' ? '👤 您' : '🤖 助手'}
+                      </Text>
+                      <div style={{ marginTop: '4px', color: '#f5e6d3', whiteSpace: 'pre-wrap' }}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {conversationalLoading && (
+                <div style={{ textAlign: 'center', color: '#c8a060' }}>
+                  <Text>🤔 思考中...</Text>
+                </div>
+              )}
+            </div>
+            <Input.TextArea
+              rows={3}
+              value={conversationalInput}
+              onChange={(e) => setConversationalInput(e.target.value)}
+              placeholder="输入您的想法，按Ctrl+Enter或点击发送..."
+              onKeyDown={(e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                  handleConversationalSend()
+                }
+              }}
+              disabled={conversationalLoading}
             />
-          </Form.Item>
-          <Form.Item
-            name="initialCapital"
-            label="初始资金（游戏币）"
-            rules={[{ required: true, message: '请输入初始资金' }]}
-            tooltip="将从您的个人账户扣除"
-          >
-            <InputNumber min={100} max={100000} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
+          </Tabs.TabPane>
+        </Tabs>
       </Modal>
 
       <Modal

@@ -46,6 +46,40 @@ body::before {
   animation: gamePatternMove 60s linear infinite;
 }
 
+/* 自定义样式 - 修复颜色适配问题 */
+.company-select .ant-select-selector {
+  color: #d4c5a9 !important;
+}
+
+.company-select .ant-select-selection-placeholder {
+  color: rgba(212, 197, 169, 0.5) !important;
+}
+
+.custom-input-number input::placeholder {
+  color: rgba(212, 197, 169, 0.5) !important;
+}
+
+.custom-input-number input {
+  color: #d4c5a9 !important;
+}
+
+.ant-input-number-input {
+  color: #d4c5a9 !important;
+}
+
+.ant-input::placeholder,
+.ant-input-textarea::placeholder {
+  color: rgba(212, 197, 169, 0.45) !important;
+}
+
+.ant-select-selection-placeholder {
+  color: rgba(212, 197, 169, 0.45) !important;
+}
+
+.ant-empty-description {
+  color: #c8a060 !important;
+}
+
 @keyframes gamePatternMove {
   0% { background-position: 0 0, 0% 0%, 100% 100%, 50% 50%, 0 0; }
   50% { background-position: 400px 400px, 10% 10%, 90% 90%, 50% 50%, 0 0; }
@@ -394,6 +428,12 @@ body::before {
   border-bottom: 1px solid rgba(120, 80, 50, 0.4) !important;
   color: #e8c468 !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* 确保Table中的Tag颜色不被覆盖 */
+.ant-table-tbody > tr > td .ant-tag {
+  color: inherit;
+  text-shadow: none;
 }
 
 /* Input博德之门风格 - 增强可见性 */

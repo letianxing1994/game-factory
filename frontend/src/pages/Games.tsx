@@ -240,7 +240,7 @@ const Games: React.FC = () => {
     if (!games || games.length === 0) {
       return (
         <Empty 
-          description={emptyText}
+          description={<span style={{ color: '#c8a060' }}>{emptyText}</span>}
           style={{ padding: '60px 0' }}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
