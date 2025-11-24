@@ -655,12 +655,31 @@ const Companies: React.FC = () => {
                 if (parsed.companyId) {
                   setConversationalState({ 
                     phase: parsed.phase || 'employees', 
-                    companyId: parsed.companyId 
+                    companyId: parsed.companyId,
+                    createdEmployees: []
                   })
-                  message.success('公司创建成功！')
-                  setTimeout(() => window.location.reload(), 2000)
+                  message.success('公司创建成功！接下来请为公司雇佣6位必需的员工：策划、架构师、美术、研发、测试、音频')
+                  // 立即刷新公司列表
+                  companiesRes?.refetch()
                 } else if (parsed.agentId) {
-                  message.success('员工创建成功！')
+                  const currentEmployees = conversationalState.createdEmployees || []
+                  setConversationalState({
+                    ...conversationalState,
+                    createdEmployees: [...currentEmployees, parsed.agentType]
+                  })
+                  message.success(`员工创建成功！已创建 ${currentEmployees.length + 1}/6 位员工`)
+                  // 如果6个员工都创建完成，刷新并关闭对话框
+                  if (currentEmployees.length + 1 >= 6) {
+                    message.success('🎉 公司和所有员工创建完成！')
+                    setTimeout(() => {
+                      companiesRes?.refetch()
+                      setCreateCompanyModalVisible(false)
+                      setCreateMode('form')
+                      setConversationalMessages([])
+                      setConversationalInput('')
+                      setConversationalState({ phase: 'company', companyId: undefined, createdEmployees: [] })
+                    }, 1500)
+                  }
                 }
               } else if (parsed.type === 'error') {
                 message.error(parsed.content)
@@ -1259,7 +1278,7 @@ const Companies: React.FC = () => {
               layout="vertical"
               onFinish={handleCreateCompany}
               initialValues={{
-                maxEmployees: 10,
+                maxEmployees: 6,
                 workflowType: 'linear',
                 initialCapital: 1000,
               }}
@@ -1276,10 +1295,10 @@ const Companies: React.FC = () => {
               </Form.Item>
               <Form.Item
                 name="maxEmployees"
-                label="最大员工数"
-                rules={[{ required: true, message: '请输入最大员工数' }]}
+                label="员工数量"
+                tooltip="一家游戏公司需要6位核心员工：策划、架构师、美术、研发、测试、音频"
               >
-                <InputNumber min={1} max={100} style={{ width: '100%' }} placeholder="10" className="custom-input-number" />
+                <InputNumber disabled value={6} style={{ width: '100%' }} className="custom-input-number" />
               </Form.Item>
               <Form.Item
                 name="workflowType"
@@ -1308,7 +1327,23 @@ const Companies: React.FC = () => {
             <div style={{ marginBottom: 16 }}>
               <Alert
                 message={<span style={{ color: '#FFD76E' }}>智能对话助手</span>}
-                description={<span style={{ color: '#d4c5a9' }}>通过对话，我将帮您创建公司并雇佣6位必需员工（策划、架构师、美术、研发、测试、音频）。</span>}
+                description={
+                  <div style={{ color: '#d4c5a9' }}>
+                    通过对话，我将帮您创建公司并雇佣6位必需员工：
+                    <br />
+                    <Text style={{ color: '#e8c468', fontSize: '12px' }}>
+                      ✅ 策划（Planner） · ✅ 架构师（Architect） · ✅ 美术（Artist）
+                      <br />
+                      ✅ 研发（Developer） · ✅ 测试（Tester） · ✅ 音频（Music）
+                    </Text>
+                    <br />
+                    {conversationalState.createdEmployees && conversationalState.createdEmployees.length > 0 && (
+                      <Text style={{ color: '#90EE90', fontSize: '12px' }}>
+                        已创建: {conversationalState.createdEmployees.join('、')} ({conversationalState.createdEmployees.length}/6)
+                      </Text>
+                    )}
+                  </div>
+                }
                 type="info"
                 showIcon
                 style={{ 

@@ -130,6 +130,151 @@ router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest,
   }
 });
 
+// 对话式创建公司（流式SSE版本）
+router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { message: userMessage, model, conversationHistory, state } = req.body;
+    const userId = req.user!.id;
+
+    if (!model || !userMessage) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少必需参数：model 和 message',
+      });
+    }
+
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const messages = [...(conversationHistory || []), { role: 'user', content: userMessage }];
+    const currentPhase = state?.phase || 'company';
+    const currentCompanyId = state?.companyId;
+    const createdEmployees = state?.createdEmployees || [];
+
+    try {
+      // 使用流式处理
+      const stream = conversationalService.processCompanyCreationStream(model, messages, {
+        phase: currentPhase,
+        companyId: currentCompanyId,
+        createdEmployees,
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'token') {
+          res.write(`data: ${JSON.stringify({ type: 'token', content: chunk.content })}\n\n`);
+        } else if (chunk.type === 'function_call') {
+          // 执行函数调用
+          const args = JSON.parse(chunk.functionCall.arguments);
+          const connection = await getConnection();
+
+          try {
+            await connection.beginTransaction();
+
+            if (currentPhase === 'company') {
+              // 创建公司
+              const userBalance = await connection.execute(
+                'SELECT game_coins FROM users WHERE id = ?',
+                [userId]
+              );
+              const currentBalance = userBalance[0][0]?.game_coins || 0;
+              
+              if (currentBalance < args.initialCapital) {
+                await connection.rollback();
+                res.write(`data: ${JSON.stringify({ type: 'error', content: '游戏币余额不足' })}\n\n`);
+                res.write('data: [DONE]\n\n');
+                res.end();
+                connection.release();
+                return;
+              }
+
+              const companyResult = await connection.execute(
+                `INSERT INTO companies (owner_id, name, description, max_employees, 
+                  workflow_type, initial_capital, current_capital, status, workflow_config) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NULL)`,
+                [userId, args.name, args.description || null, 6, args.workflowType, args.initialCapital, args.initialCapital]
+              );
+              const newCompanyId = (companyResult[0] as any).insertId;
+
+              await connection.execute('UPDATE users SET game_coins = game_coins - ? WHERE id = ?', [args.initialCapital, userId]);
+              const balanceAfter = currentBalance - args.initialCapital;
+              await connection.execute(
+                `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, related_type, related_id) 
+                 VALUES (?, 'spend', ?, ?, '创建公司扣除初始资金', 'company', ?)`,
+                [userId, args.initialCapital, balanceAfter, newCompanyId]
+              );
+
+              await connection.commit();
+              await redisClient.del(`user:${userId}:companies`);
+              await redisClient.del(`user:${userId}:balance`);
+
+              logger.info(`用户 ${userId} 通过对话创建了公司 ${newCompanyId}: ${args.name}`);
+
+              res.write(`data: ${JSON.stringify({ 
+                type: 'success', 
+                content: `公司"${args.name}"创建成功！现在请为公司雇佣6位必需员工（策划、架构师、美术、研发、测试、音频）。`,
+                companyId: newCompanyId,
+                phase: 'employees'
+              })}\n\n`);
+            } else {
+              // 创建员工
+              const agentResult = await connection.execute(
+                `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
+                 VALUES (?, ?, ?, ?, ?, ?, 'available')`,
+                [args.name, args.type, args.dimension, args.ai_model, args.specialization, args.extra_traits || null]
+              );
+              const newAgentId = (agentResult[0] as any).insertId;
+
+              await connection.execute(
+                `INSERT INTO company_employees (company_id, employee_id, status, hired_at) VALUES (?, ?, 'active', NOW())`,
+                [currentCompanyId, newAgentId]
+              );
+              await connection.execute(`UPDATE employee_agents SET status = 'employed' WHERE id = ?`, [newAgentId]);
+
+              await connection.commit();
+              await redisClient.del(`user:${userId}:agents:all:all`);
+              await redisClient.del(`company:${currentCompanyId}:employees`);
+
+              logger.info(`用户 ${userId} 为公司 ${currentCompanyId} 雇佣了员工 ${newAgentId}: ${args.name} (${args.type})`);
+
+              const updatedEmployees = [...createdEmployees, args.type];
+              
+              res.write(`data: ${JSON.stringify({ 
+                type: 'success', 
+                content: `员工"${args.name}"（${args.type}）雇佣成功！`,
+                agentId: newAgentId,
+                agentType: args.type,
+                phase: 'employees'
+              })}\n\n`);
+            }
+
+            connection.release();
+          } catch (error) {
+            await connection.rollback();
+            connection.release();
+            throw error;
+          }
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (error: any) {
+      logger.error('对话流式处理失败:', error);
+      res.write(`data: ${JSON.stringify({ type: 'error', content: error.message || '处理失败' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  } catch (error: any) {
+    logger.error('对话式创建公司失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || '对话式创建失败',
+    });
+  }
+});
+
 // 对话式创建公司（完整流程：公司 + 6个必需员工）
 router.post('/conversational-create', authenticate, async (req: AuthRequest, res) => {
   try {

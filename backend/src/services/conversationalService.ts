@@ -32,7 +32,7 @@ const createCompanyFunctionDef = {
       },
       maxEmployees: {
         type: 'number',
-        description: '最大员工数，1-100之间',
+        description: '最大员工数，必须是6（游戏公司需要6位核心员工：策划、架构师、美术、研发、测试、音频）',
       },
       workflowType: {
         type: 'string',
@@ -307,7 +307,21 @@ export class ConversationalService {
     const systemMessage = {
       role: 'system' as const,
       content:
-        '你是一个游戏公司管理助手。用户会告诉你他们想要创建的公司或雇佣的员工信息。你需要收集所有必需的信息，然后调用相应的函数来完成操作。如果信息不完整，请询问用户。',
+        '你是一个游戏公司管理助手。\n\n' +
+        '**重要规则**：\n' +
+        '1. 创建公司时，maxEmployees 必须设置为 6（固定值）\n' +
+        '2. 公司创建后，你必须引导用户提供6位必需员工的信息：\n' +
+        '   - 策划（planner）: 负责游戏设计文档\n' +
+        '   - 架构师（architect）: 负责技术架构设计\n' +
+        '   - 美术（artist）: 负责游戏美术资源\n' +
+        '   - 研发（developer）: 负责游戏代码开发\n' +
+        '   - 测试（tester）: 负责游戏测试\n' +
+        '   - 音频（music）: 负责游戏音频\n' +
+        '3. 每个员工需要的信息：姓名、类型(type)、维度(dimension: 2d/3d)、专长(specialization)、AI模型(ai_model)\n' +
+        '4. 收集完一个员工的信息后，立即调用 create_agent 函数创建\n' +
+        '5. 继续引导创建下一个员工，直到6个员工全部创建完成\n' +
+        '6. 如果用户一次性提供了多个员工信息，你应该逐个创建\n\n' +
+        '你的任务是收集所有必需信息，然后调用相应的函数。如果信息不完整，请礼貌地询问用户。',
     };
 
     const response = await client.chat.completions.create({
@@ -356,7 +370,21 @@ export class ConversationalService {
     }
 
     const systemMessage =
-      '你是一个游戏公司管理助手。用户会告诉你他们想要创建的公司或雇佣的员工信息。你需要收集所有必需的信息，然后调用相应的函数来完成操作。如果信息不完整，请询问用户。';
+      '你是一个游戏公司管理助手。\n\n' +
+      '**重要规则**：\n' +
+      '1. 创建公司时，maxEmployees 必须设置为 6（固定值）\n' +
+      '2. 公司创建后，你必须引导用户提供6位必需员工的信息：\n' +
+      '   - 策划（planner）: 负责游戏设计文档\n' +
+      '   - 架构师（architect）: 负责技术架构设计\n' +
+      '   - 美术（artist）: 负责游戏美术资源\n' +
+      '   - 研发（developer）: 负责游戏代码开发\n' +
+      '   - 测试（tester）: 负责游戏测试\n' +
+      '   - 音频（music）: 负责游戏音频\n' +
+      '3. 每个员工需要的信息：姓名、类型(type)、维度(dimension: 2d/3d)、专长(specialization)、AI模型(ai_model)\n' +
+      '4. 收集完一个员工的信息后，立即调用 create_agent 函数创建\n' +
+      '5. 继续引导创建下一个员工，直到6个员工全部创建完成\n' +
+      '6. 如果用户一次性提供了多个员工信息，你应该逐个创建\n\n' +
+      '你的任务是收集所有必需信息，然后调用相应的函数。如果信息不完整，请礼貌地询问用户。';
 
     const response = await this.anthropicClient.messages.create({
       model: model,
