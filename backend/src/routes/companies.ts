@@ -1325,20 +1325,21 @@ router.delete('/:id/dissolve', authenticate, async (req: AuthRequest, res) => {
         'SELECT game_coins FROM users WHERE id = ?',
         [userId]
       );
-      const currentBalance = userBalanceResult[0][0]?.game_coins || 0;
+      const currentBalance = parseFloat(userBalanceResult[0][0]?.game_coins || 0);
+      const refundAmount = parseFloat(company.current_capital);
 
       await connection.execute(
         'UPDATE users SET game_coins = game_coins + ? WHERE id = ?',
-        [company.current_capital, userId]
+        [refundAmount, userId]
       );
 
-      const newBalance = currentBalance + company.current_capital;
+      const newBalance = currentBalance + refundAmount;
 
       // 记录交易
       await connection.execute(
         `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, related_type, related_id) 
          VALUES (?, 'refund', ?, ?, '公司解散退还剩余资金', 'company', ?)`,
-        [userId, company.current_capital, newBalance, companyId]
+        [userId, refundAmount, newBalance, companyId]
       );
     }
 
