@@ -1230,6 +1230,10 @@ const Companies: React.FC = () => {
         open={createCompanyModalVisible}
         title="🏢 创建游戏开发公司"
         okText={createMode === 'form' ? "✨ 立即创建" : "💬 发送"}
+        okButtonProps={{
+          loading: createMode === 'chat' ? conversationalLoading : false,
+          disabled: createMode === 'chat' && !conversationalInput.trim()
+        }}
         cancelText="取消"
         width={700}
         onOk={() => {
@@ -1376,33 +1380,21 @@ const Companies: React.FC = () => {
                 </div>
               )}
             </div>
-            <Space.Compact style={{ width: '100%' }}>
-              <Input.TextArea
-                rows={3}
-                value={conversationalInput}
-                onChange={(e) => setConversationalInput(e.target.value)}
-                placeholder="输入您的想法，按Enter发送，Shift+Enter换行..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    if (!conversationalLoading && conversationalInput.trim()) {
-                      handleConversationalSend()
-                    }
+            <Input.TextArea
+              rows={3}
+              value={conversationalInput}
+              onChange={(e) => setConversationalInput(e.target.value)}
+              placeholder="输入您的想法，按Enter或点击下方按钮发送，Shift+Enter换行..."
+              onPressEnter={(e) => {
+                if (!e.shiftKey) {
+                  e.preventDefault()
+                  if (!conversationalLoading && conversationalInput.trim()) {
+                    handleConversationalSend()
                   }
-                }}
-                disabled={conversationalLoading}
-                style={{ flex: 1 }}
-              />
-              <Button 
-                type="primary" 
-                onClick={handleConversationalSend}
-                disabled={conversationalLoading || !conversationalInput.trim()}
-                style={{ alignSelf: 'flex-end' }}
-                loading={conversationalLoading}
-              >
-                发送
-              </Button>
-            </Space.Compact>
+                }
+              }}
+              disabled={conversationalLoading}
+            />
           </Tabs.TabPane>
         </Tabs>
       </Modal>
