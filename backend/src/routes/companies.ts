@@ -1315,7 +1315,7 @@ router.delete('/:id/dissolve', authenticate, async (req: AuthRequest, res) => {
 
     // 更新公司状态为已解散
     await connection.execute(
-      'UPDATE companies SET status = ?, dissolved_at = NOW() WHERE id = ?',
+      'UPDATE companies SET status = ? WHERE id = ?',
       ['dissolved', companyId]
     );
 
