@@ -964,19 +964,39 @@ const Agents: React.FC = () => {
                 }}
               />
               <div style={{ marginTop: 12 }}>
-                <Text style={{ color: '#c8a060' }}>分配到公司：</Text>
-                <Select 
-                  placeholder="请选择公司" 
-                  style={{ width: '100%', marginTop: 8 }}
-                  value={selectedCompanyForConv}
-                  onChange={setSelectedCompanyForConv}
-                >
-                  {myCompanies.map((company: any) => (
-                    <Select.Option key={company.id} value={company.id}>
-                      {company.name}
-                    </Select.Option>
-                  ))}
-                </Select>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <div>
+                    <Text style={{ color: '#d4af37', fontWeight: 600 }}>🤖 AI模型:</Text>
+                    <Select
+                      defaultValue="gpt-4o"
+                      style={{ width: '100%', marginTop: 4 }}
+                      options={[
+                        { label: 'GPT-4o（推荐）', value: 'gpt-4o' },
+                        { label: 'GPT-5', value: 'gpt-5' },
+                        { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
+                        { label: 'DeepSeek R1', value: 'deepseek-r1' },
+                      ]}
+                      onChange={(value) => {
+                        console.log('Selected model:', value)
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Text style={{ color: '#c8a060' }}>分配到公司：</Text>
+                    <Select 
+                      placeholder="请选择公司" 
+                      style={{ width: '100%', marginTop: 4 }}
+                      value={selectedCompanyForConv}
+                      onChange={setSelectedCompanyForConv}
+                    >
+                      {myCompanies.map((company: any) => (
+                        <Select.Option key={company.id} value={company.id}>
+                          {company.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </div>
+                </Space>
               </div>
             </div>
             <div style={{ 

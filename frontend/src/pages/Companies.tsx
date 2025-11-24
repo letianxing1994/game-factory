@@ -1293,6 +1293,25 @@ const Companies: React.FC = () => {
                 }}
               />
             </div>
+            <div style={{ marginBottom: 12 }}>
+              <Space>
+                <Text style={{ color: '#d4af37', fontWeight: 600 }}>🤖 AI模型:</Text>
+                <Select
+                  defaultValue="gpt-4o"
+                  style={{ width: 200 }}
+                  options={[
+                    { label: 'GPT-4o（推荐）', value: 'gpt-4o' },
+                    { label: 'GPT-5', value: 'gpt-5' },
+                    { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
+                    { label: 'DeepSeek R1', value: 'deepseek-r1' },
+                  ]}
+                  onChange={(value) => {
+                    // 可以将选择的模型保存到状态中，用于后续API调用
+                    console.log('Selected model:', value)
+                  }}
+                />
+              </Space>
+            </div>
             <div style={{ 
               height: '400px', 
               overflowY: 'auto', 
