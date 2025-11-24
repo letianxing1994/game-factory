@@ -106,6 +106,145 @@ export class ConversationalService {
     }
   }
 
+  // 流式处理对话
+  async *processCompanyCreationStream(
+    model: string,
+    messages: Message[],
+    context?: { phase: 'company' | 'employees'; companyId?: number; createdEmployees?: string[] },
+  ): AsyncGenerator<{ type: 'token' | 'function_call' | 'done'; content?: string; functionCall?: any; phase?: string }> {
+    const phase = context?.phase || 'company';
+    const functionDef = phase === 'company' ? createCompanyFunctionDef : createAgentFunctionDef;
+
+    if (model.startsWith('gpt') || model.startsWith('deepseek')) {
+      yield* this.processOpenAIStyleChatStream(model, messages, functionDef, phase);
+    } else if (model.startsWith('claude')) {
+      yield* this.processAnthropicChatStream(model, messages, functionDef, phase);
+    } else {
+      throw new Error('不支持的模型');
+    }
+  }
+
+  async *processAgentCreationStream(
+    model: string,
+    messages: Message[],
+  ): AsyncGenerator<{ type: 'token' | 'function_call' | 'done'; content?: string; functionCall?: any }> {
+    if (model.startsWith('gpt') || model.startsWith('deepseek')) {
+      yield* this.processOpenAIStyleChatStream(model, messages, createAgentFunctionDef);
+    } else if (model.startsWith('claude')) {
+      yield* this.processAnthropicChatStream(model, messages, createAgentFunctionDef);
+    } else {
+      throw new Error('不支持的模型');
+    }
+  }
+
+  private async *processOpenAIStyleChatStream(
+    model: string,
+    messages: Message[],
+    functionDef: any,
+    phase?: string,
+  ): AsyncGenerator<{ type: 'token' | 'function_call' | 'done'; content?: string; functionCall?: any; phase?: string }> {
+    let client: OpenAI | null = null;
+    let modelName = model;
+
+    if (model.startsWith('deepseek')) {
+      client = this.deepseekClient;
+      if (!client) throw new Error('DeepSeek API key 未配置');
+      modelName = 'deepseek-chat';
+    } else {
+      client = this.openaiClient;
+      if (!client) throw new Error('OpenAI API key 未配置');
+    }
+
+    const systemMessage = {
+      role: 'system' as const,
+      content: '你是一个游戏公司管理助手。用户会告诉你他们想要创建的公司或雇佣的员工信息。你需要收集所有必需的信息，然后调用相应的函数来完成操作。如果信息不完整，请友好地询问用户。回答要简洁专业。',
+    };
+
+    const stream = await client.chat.completions.create({
+      model: modelName,
+      messages: [systemMessage, ...messages] as any,
+      tools: [{ type: 'function', function: functionDef }],
+      tool_choice: 'auto',
+      stream: true,
+    });
+
+    let fullContent = '';
+    let toolCall: any = null;
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      
+      if (delta?.content) {
+        fullContent += delta.content;
+        yield { type: 'token', content: delta.content, phase };
+      }
+
+      if (delta?.tool_calls) {
+        if (!toolCall) {
+          toolCall = { name: '', arguments: '' };
+        }
+        const tc = delta.tool_calls[0];
+        if (tc.function?.name) toolCall.name = tc.function.name;
+        if (tc.function?.arguments) toolCall.arguments += tc.function.arguments;
+      }
+    }
+
+    if (toolCall && toolCall.name) {
+      yield { type: 'function_call', functionCall: toolCall, phase };
+    }
+
+    yield { type: 'done', phase };
+  }
+
+  private async *processAnthropicChatStream(
+    model: string,
+    messages: Message[],
+    functionDef: any,
+    phase?: string,
+  ): AsyncGenerator<{ type: 'token' | 'function_call' | 'done'; content?: string; functionCall?: any; phase?: string }> {
+    if (!this.anthropicClient) throw new Error('Anthropic API key 未配置');
+
+    const systemMessage = '你是一个游戏公司管理助手。用户会告诉你他们想要创建的公司或雇佣的员工信息。你需要收集所有必需的信息，然后调用相应的函数来完成操作。如果信息不完整，请友好地询问用户。回答要简洁专业。';
+
+    const stream = await this.anthropicClient.messages.stream({
+      model: model,
+      max_tokens: 1024,
+      system: systemMessage,
+      messages: messages.map((msg) => ({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content,
+      })),
+      tools: [{
+        name: functionDef.name,
+        description: functionDef.description,
+        input_schema: functionDef.parameters,
+      }],
+    });
+
+    let toolUse: any = null;
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          yield { type: 'token', content: event.delta.text, phase };
+        } else if (event.delta.type === 'input_json_delta') {
+          if (!toolUse) toolUse = { name: '', input: '' };
+          toolUse.input += event.delta.partial_json;
+        }
+      } else if (event.type === 'content_block_start') {
+        if (event.content_block.type === 'tool_use') {
+          toolUse = { name: event.content_block.name, input: '' };
+        }
+      }
+    }
+
+    if (toolUse && toolUse.name) {
+      yield { type: 'function_call', functionCall: { name: toolUse.name, arguments: toolUse.input }, phase };
+    }
+
+    yield { type: 'done', phase };
+  }
+
   async processCompanyCreation(
     model: string,
     messages: Message[],

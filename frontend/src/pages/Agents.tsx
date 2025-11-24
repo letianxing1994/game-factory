@@ -189,6 +189,7 @@ const Agents: React.FC = () => {
   const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
   const [conversationalInput, setConversationalInput] = useState('')
   const [conversationalLoading, setConversationalLoading] = useState(false)
+  const [conversationalModel, setConversationalModel] = useState('gpt-4o')
   const [selectedCompanyForConv, setSelectedCompanyForConv] = useState<number>()
 
   const { data: agentsRes, refetch } = useQuery(
@@ -339,61 +340,96 @@ const Agents: React.FC = () => {
     }
 
     const userMessage = conversationalInput.trim()
-    setConversationalInput('')
-    
-    // 添加用户消息到对话
-    const newMessages = [
-      ...conversationalMessages,
-      { role: 'user' as const, content: userMessage }
-    ]
+    const newMessages = [...conversationalMessages, { role: 'user' as const, content: userMessage }]
     setConversationalMessages(newMessages)
+    setConversationalInput('')
     setConversationalLoading(true)
 
+    let assistantMessage = ''
+    setConversationalMessages([...newMessages, { role: 'assistant' as const, content: '' }])
+
     try {
-      const res = await apiClient.post<{
-        success: boolean
-        agentId?: number
-        reply?: string
-        message?: string
-      }>('/agents/conversational-create', {
-        companyId: selectedCompanyForConv,
-        model: 'gpt-4o',
-        messages: newMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
+      const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+      const token = localStorage.getItem('token')
+      
+      const response = await fetch(`${API_BASE_URL}/agents/conversational`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          model: conversationalModel,
+          conversationHistory: conversationalMessages,
+          companyId: selectedCompanyForConv
+        })
       })
 
-      if (res.success) {
-        const assistantReply = res.reply || res.message || '员工创建成功'
-        
-        // 添加助手回复
-        setConversationalMessages([
-          ...newMessages,
-          { role: 'assistant', content: assistantReply }
-        ])
+      if (!response.ok) {
+        throw new Error('请求失败')
+      }
 
-        // 如果创建成功，刷新列表
-        if (res.agentId) {
-          message.success('🎉 员工创建成功！')
-          setTimeout(() => {
-            setCreateModalOpen(false)
-            setCreateMode('form')
-            setConversationalMessages([])
-            setSelectedCompanyForConv(undefined)
-            refetch()
-          }, 1500)
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('无法读取响应流')
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              break
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              
+              if (parsed.type === 'token') {
+                assistantMessage += parsed.content
+                setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
+              } else if (parsed.type === 'success') {
+                assistantMessage = parsed.content
+                setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
+                
+                if (parsed.agentId) {
+                  message.success('员工创建成功！')
+                  setTimeout(() => {
+                    setCreateModalOpen(false)
+                    setCreateMode('form')
+                    setConversationalMessages([])
+                    setSelectedCompanyForConv(undefined)
+                    refetch()
+                  }, 1500)
+                }
+              } else if (parsed.type === 'error') {
+                message.error(parsed.content)
+                assistantMessage = parsed.content
+                setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
+              } else if (parsed.type === 'message') {
+                assistantMessage = parsed.content
+                setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
+              }
+            } catch (e) {
+              // 忽略JSON解析错误
+            }
+          }
         }
-      } else {
-        message.error(res.message || '操作失败')
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.message || '对话失败')
-      // 仍然显示错误消息
-      setConversationalMessages([
-        ...newMessages,
-        { role: 'assistant', content: '抱歉，发生了错误：' + (error?.response?.data?.message || '未知错误') }
-      ])
+      console.error('对话失败:', error)
+      message.error('对话失败，请重试')
+      const errorMsg = '抱歉，发生了错误，请稍后重试。'
+      setConversationalMessages([...newMessages, { role: 'assistant', content: errorMsg }])
     } finally {
       setConversationalLoading(false)
     }
@@ -968,7 +1004,7 @@ const Agents: React.FC = () => {
                   <div>
                     <Text style={{ color: '#d4af37', fontWeight: 600 }}>🤖 AI模型:</Text>
                     <Select
-                      defaultValue="gpt-4o"
+                      value={conversationalModel}
                       style={{ width: '100%', marginTop: 4 }}
                       options={[
                         { label: 'GPT-4o（推荐）', value: 'gpt-4o' },
@@ -976,9 +1012,7 @@ const Agents: React.FC = () => {
                         { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
                         { label: 'DeepSeek R1', value: 'deepseek-r1' },
                       ]}
-                      onChange={(value) => {
-                        console.log('Selected model:', value)
-                      }}
+                      onChange={setConversationalModel}
                     />
                   </div>
                   <div>
@@ -1046,28 +1080,33 @@ const Agents: React.FC = () => {
                 </div>
               )}
             </div>
-            <Input.TextArea
-              rows={3}
-              value={conversationalInput}
-              onChange={(e) => setConversationalInput(e.target.value)}
-              placeholder="输入您的想法，按Ctrl+Enter或点击发送..."
-              onKeyDown={(e) => {
-                if (e.ctrlKey && e.key === 'Enter') {
-                  handleConversationalAgentSend()
-                }
-              }}
-              disabled={conversationalLoading || !selectedCompanyForConv}
-            />
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <Space.Compact style={{ width: '100%', marginTop: 12 }}>
+              <Input.TextArea
+                rows={3}
+                value={conversationalInput}
+                onChange={(e) => setConversationalInput(e.target.value)}
+                placeholder="输入您的想法，按Enter发送，Shift+Enter换行..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (!conversationalLoading && conversationalInput.trim() && selectedCompanyForConv) {
+                      handleConversationalAgentSend()
+                    }
+                  }
+                }}
+                disabled={conversationalLoading || !selectedCompanyForConv}
+                style={{ flex: 1 }}
+              />
               <Button 
                 type="primary" 
                 onClick={handleConversationalAgentSend}
                 loading={conversationalLoading}
-                disabled={!selectedCompanyForConv}
+                disabled={!selectedCompanyForConv || !conversationalInput.trim()}
+                style={{ alignSelf: 'flex-end' }}
               >
-                💬 发送
+                发送
               </Button>
-            </div>
+            </Space.Compact>
           </Tabs.TabPane>
         </Tabs>
       </Modal>

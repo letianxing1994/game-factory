@@ -873,4 +873,182 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 对话式创建公司（流式输出）
+router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { message, model = 'gpt-4o', conversationHistory = [], state = {} } = req.body;
+    const userId = req.user!.id;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: '消息不能为空' });
+    }
+
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const messages = [
+      ...conversationHistory,
+      { role: 'user' as const, content: message }
+    ];
+
+    let fullResponse = '';
+    let functionCall: any = null;
+
+    try {
+      for await (const chunk of conversationalService.processCompanyCreationStream(model, messages, state)) {
+        if (chunk.type === 'token' && chunk.content) {
+          fullResponse += chunk.content;
+          res.write(`data: ${JSON.stringify({ type: 'token', content: chunk.content })}\n\n`);
+        } else if (chunk.type === 'function_call' && chunk.functionCall) {
+          functionCall = chunk.functionCall;
+        } else if (chunk.type === 'done') {
+          // 如果有函数调用，执行创建操作
+          if (functionCall) {
+            const args = JSON.parse(functionCall.arguments);
+            
+            if (functionCall.name === 'create_company') {
+              // 创建公司
+              const connection = await getConnection();
+              try {
+                await connection.beginTransaction();
+
+                const existingCompany = await connection.execute(
+                  'SELECT id FROM companies WHERE owner_id = ?',
+                  [userId]
+                );
+
+                if (Array.isArray(existingCompany[0]) && existingCompany[0].length > 0) {
+                  await connection.rollback();
+                  res.write(`data: ${JSON.stringify({ type: 'error', content: '您已经拥有一家公司，无法创建多家公司' })}\n\n`);
+                  res.write('data: [DONE]\n\n');
+                  return res.end();
+                }
+
+                const userBalance = await connection.execute(
+                  'SELECT game_coins FROM users WHERE id = ?',
+                  [userId]
+                );
+                const currentBalance = userBalance[0][0]?.game_coins || 0;
+                
+                if (currentBalance < args.initialCapital) {
+                  await connection.rollback();
+                  res.write(`data: ${JSON.stringify({ type: 'error', content: '游戏币余额不足，无法创建公司' })}\n\n`);
+                  res.write('data: [DONE]\n\n');
+                  return res.end();
+                }
+
+                const companyResult = await connection.execute(
+                  `INSERT INTO companies (owner_id, name, description, max_employees, 
+                    workflow_type, initial_capital, current_capital, status) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+                  [userId, args.name, args.description || '', args.maxEmployees, args.workflowType, args.initialCapital, args.initialCapital]
+                );
+
+                const companyId = (companyResult[0] as any).insertId;
+
+                await connection.execute(
+                  'UPDATE users SET game_coins = game_coins - ? WHERE id = ?',
+                  [args.initialCapital, userId]
+                );
+
+                const balanceAfter = currentBalance - args.initialCapital;
+                await connection.execute(
+                  `INSERT INTO coin_transactions (user_id, transaction_type, amount, balance_after, description, 
+                    related_type, related_id) 
+                   VALUES (?, 'spend', ?, ?, '创建公司扣除初始资金', 'company', ?)`,
+                  [userId, args.initialCapital, balanceAfter, companyId]
+                );
+
+                await connection.commit();
+
+                res.write(`data: ${JSON.stringify({ 
+                  type: 'success', 
+                  content: `🎉 恭喜！公司「${args.name}」创建成功！`,
+                  companyId,
+                  phase: 'employees'
+                })}\n\n`);
+              } catch (error) {
+                await connection.rollback();
+                logger.error('创建公司失败:', error);
+                res.write(`data: ${JSON.stringify({ type: 'error', content: '创建公司失败，请重试' })}\n\n`);
+              }
+            } else if (functionCall.name === 'create_agent') {
+              // 创建员工
+              const connection = await getConnection();
+              try {
+                await connection.beginTransaction();
+
+                if (state.companyId) {
+                  const companyOwnership = await connection.execute(
+                    'SELECT id, max_employees FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+                    [state.companyId, userId]
+                  );
+
+                  if (Array.isArray(companyOwnership[0]) && companyOwnership[0].length === 0) {
+                    await connection.rollback();
+                    res.write(`data: ${JSON.stringify({ type: 'error', content: '无权在此公司创建员工' })}\n\n`);
+                    res.write('data: [DONE]\n\n');
+                    return res.end();
+                  }
+
+                  const employeeCount = await connection.execute(
+                    'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
+                    [state.companyId]
+                  );
+
+                  if (employeeCount[0][0].count >= companyOwnership[0][0].max_employees) {
+                    await connection.rollback();
+                    res.write(`data: ${JSON.stringify({ type: 'error', content: '公司已达到最大员工数量限制' })}\n\n`);
+                    res.write('data: [DONE]\n\n');
+                    return res.end();
+                  }
+                }
+
+                const agentResult = await connection.execute(
+                  `INSERT INTO agents (owner_id, name, type, dimension, ai_model, specialization, extra_traits, company_id, status) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    userId, args.name, args.type, args.dimension || null, args.ai_model, args.specialization, 
+                    args.extra_traits || null, state.companyId || null, state.companyId ? 'employed' : 'available'
+                  ]
+                );
+
+                const agentId = (agentResult[0] as any).insertId;
+                await connection.commit();
+
+                res.write(`data: ${JSON.stringify({ 
+                  type: 'success', 
+                  content: `✅ 员工「${args.name}」雇佣成功！`,
+                  agentId
+                })}\n\n`);
+              } catch (error) {
+                await connection.rollback();
+                logger.error('创建员工失败:', error);
+                res.write(`data: ${JSON.stringify({ type: 'error', content: '创建员工失败，请重试' })}\n\n`);
+              }
+            }
+          } else if (fullResponse) {
+            res.write(`data: ${JSON.stringify({ type: 'message', content: fullResponse })}\n\n`);
+          }
+
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      }
+    } catch (error) {
+      logger.error('对话处理失败:', error);
+      res.write(`data: ${JSON.stringify({ type: 'error', content: '对话处理失败: ' + (error as Error).message })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  } catch (error) {
+    logger.error('对话创建公司失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: '对话处理失败' });
+    }
+  }
+});
+
 export default router;

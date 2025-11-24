@@ -773,4 +773,113 @@ router.get('/stats/overview', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 对话式创建员工（流式输出）
+router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { message, model = 'gpt-4o', conversationHistory = [], companyId } = req.body;
+    const userId = req.user!.id;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: '消息不能为空' });
+    }
+
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const messages = [
+      ...conversationHistory,
+      { role: 'user' as const, content: message }
+    ];
+
+    let fullResponse = '';
+    let functionCall: any = null;
+
+    try {
+      for await (const chunk of conversationalService.processAgentCreationStream(model, messages)) {
+        if (chunk.type === 'token' && chunk.content) {
+          fullResponse += chunk.content;
+          res.write(`data: ${JSON.stringify({ type: 'token', content: chunk.content })}\n\n`);
+        } else if (chunk.type === 'function_call' && chunk.functionCall) {
+          functionCall = chunk.functionCall;
+        } else if (chunk.type === 'done') {
+          // 如果有函数调用，执行创建操作
+          if (functionCall) {
+            const args = JSON.parse(functionCall.arguments);
+            const connection = await getConnection();
+            
+            try {
+              await connection.beginTransaction();
+
+              if (companyId) {
+                const companyOwnership = await connection.execute(
+                  'SELECT id, max_employees FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+                  [companyId, userId]
+                );
+
+                if (Array.isArray(companyOwnership[0]) && companyOwnership[0].length === 0) {
+                  await connection.rollback();
+                  res.write(`data: ${JSON.stringify({ type: 'error', content: '无权在此公司创建员工' })}\n\n`);
+                  res.write('data: [DONE]\n\n');
+                  return res.end();
+                }
+
+                const employeeCount = await connection.execute(
+                  'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
+                  [companyId]
+                );
+
+                if (employeeCount[0][0].count >= companyOwnership[0][0].max_employees) {
+                  await connection.rollback();
+                  res.write(`data: ${JSON.stringify({ type: 'error', content: '公司已达到最大员工数量限制' })}\n\n`);
+                  res.write('data: [DONE]\n\n');
+                  return res.end();
+                }
+              }
+
+              const agentResult = await connection.execute(
+                `INSERT INTO agents (owner_id, name, type, dimension, ai_model, specialization, extra_traits, company_id, status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  userId, args.name, args.type, args.dimension || null, args.ai_model, args.specialization, 
+                  args.extra_traits || null, companyId || null, companyId ? 'employed' : 'available'
+                ]
+              );
+
+              const agentId = (agentResult[0] as any).insertId;
+              await connection.commit();
+
+              res.write(`data: ${JSON.stringify({ 
+                type: 'success', 
+                content: `✅ 员工「${args.name}」雇佣成功！`,
+                agentId
+              })}\n\n`);
+            } catch (error) {
+              await connection.rollback();
+              logger.error('创建员工失败:', error);
+              res.write(`data: ${JSON.stringify({ type: 'error', content: '创建员工失败，请重试' })}\n\n`);
+            }
+          } else if (fullResponse) {
+            res.write(`data: ${JSON.stringify({ type: 'message', content: fullResponse })}\n\n`);
+          }
+
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      }
+    } catch (error) {
+      logger.error('对话处理失败:', error);
+      res.write(`data: ${JSON.stringify({ type: 'error', content: '对话处理失败: ' + (error as Error).message })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  } catch (error) {
+    logger.error('对话创建员工失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: '对话处理失败' });
+    }
+  }
+});
+
 export default router;
