@@ -308,16 +308,18 @@ export class ConversationalService {
       model: modelName,
       messages: [systemMessage, ...messages] as any,
       tools: [{ type: 'function', function: suggestProjectFunctionDef }],
-      tool_choice: 'force',
       max_tokens: 800,
     });
 
     const choice = resp.choices?.[0];
 
     // Prefer structured function_call arguments
-    const toolCall = choice?.message?.tool_calls?.[0];
-    if (toolCall && toolCall.function && toolCall.function.arguments) {
-      const text = toolCall.function.arguments as string;
+    const toolCall = choice?.message?.tool_calls?.[0] as any;
+    // Some OpenAI client versions use different shapes for tool calls.
+    // Try several possible places for the function/tool arguments.
+    const toolCallArgs = toolCall?.function?.arguments ?? toolCall?.tool?.arguments ?? toolCall?.arguments;
+    if (toolCallArgs) {
+      const text = toolCallArgs as string;
       try {
         return JSON.parse(text);
       } catch (err) {
@@ -341,7 +343,7 @@ export class ConversationalService {
     }
 
     // Fallback to plain content
-    const text = choice?.message?.content || choice?.message?.text || '';
+    const text = choice?.message?.content || '';
     try { return JSON.parse(text as string); } catch (err) {
       const s = (text as string).trim();
       const first = s.indexOf('{');
