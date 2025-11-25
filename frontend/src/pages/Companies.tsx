@@ -65,6 +65,7 @@ interface CompanyFormValues {
   maxEmployees: number
   workflowType: 'linear' | 'feedback' | 'concurrent'
   initialCapital: number
+  workflowPrompt?: string
 }
 
 // 项目执行表单接口
@@ -290,8 +291,12 @@ const Companies: React.FC = () => {
   const [clarResponses, setClarResponses] = useState<Record<string, string>>({})
   const [clarLoading, setClarLoading] = useState(false)
   const clarStreamController = useRef<AbortController | null>(null)
+  const [executeModalVisible, setExecuteModalVisible] = useState(false)
+  const [executeModalLoading, setExecuteModalLoading] = useState(false)
+  const [executePrompt, setExecutePrompt] = useState('')
+  const [executeCompanyId, setExecuteCompanyId] = useState<number | undefined>(undefined)
 
-  const { data: companiesRes } = useQuery(['companies', 'mine'], async () => {
+  const { data: companiesRes, refetch: refetchCompanies } = useQuery(['companies', 'mine'], async () => {
     const res = await apiClient.get<{ success: boolean; data: Company[] }>('/companies/my')
     return res
   })
@@ -573,6 +578,7 @@ const Companies: React.FC = () => {
         max_employees: values.maxEmployees,
         workflow_type: values.workflowType,
         initial_capital: values.initialCapital,
+        workflowConfig: values.workflowPrompt ? { prompt: values.workflowPrompt } : undefined,
       })
 
       if (res.success) {
@@ -580,7 +586,7 @@ const Companies: React.FC = () => {
         setCreateCompanyModalVisible(false)
         companyForm.resetFields()
         // 刷新公司列表
-        window.location.reload()
+        refetchCompanies?.()
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || '创建公司失败')
@@ -619,11 +625,11 @@ const Companies: React.FC = () => {
 
           const data = await response.json()
 
-          if (data.success) {
+            if (data.success) {
             message.success(
               `公司已解散！退还资金 ${data.data.refundAmount} 游戏币，处理员工 ${data.data.employeesProcessed} 名`
             )
-            companiesRes.refetch()
+            refetchCompanies?.()
             setSelectedCompanyId(undefined)
           } else {
             message.error(data.message || '解散公司失败')
@@ -697,6 +703,12 @@ const Companies: React.FC = () => {
               if (parsed.type === 'token') {
                 assistantMessage += parsed.content
                 setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
+              } else if (parsed.type === 'ask_execute') {
+                // 后端显式请求是否立即执行工作流，并提供建议的结构化项目
+                const suggested = parsed.suggestedProject || {}
+                setExecutePrompt(suggested.additionalRequirements || JSON.stringify(suggested, null, 2) || assistantMessage)
+                setExecuteCompanyId(parsed.companyId || conversationalState.companyId)
+                setExecuteModalVisible(true)
               } else if (parsed.type === 'success') {
                 assistantMessage = parsed.content
                 setConversationalMessages([...newMessages, { role: 'assistant', content: assistantMessage }])
@@ -709,7 +721,7 @@ const Companies: React.FC = () => {
                   })
                   message.success('公司创建成功！接下来请为公司雇佣6位必需的员工：策划、架构师、美术、研发、测试、音频')
                   // 立即刷新公司列表
-                  companiesRes?.refetch()
+                  refetchCompanies?.()
                 } else if (parsed.agentId) {
                   const currentEmployees = conversationalState.createdEmployees || []
                   setConversationalState({
@@ -720,14 +732,12 @@ const Companies: React.FC = () => {
                   // 如果6个员工都创建完成，刷新并关闭对话框
                   if (currentEmployees.length + 1 >= 6) {
                     message.success('🎉 公司和所有员工创建完成！')
+                    // 打开执行确认模态，允许填写或接受 AI 建议的项目描述
                     setTimeout(() => {
-                      companiesRes?.refetch()
-                      setCreateCompanyModalVisible(false)
-                      setCreateMode('form')
-                      setConversationalMessages([])
-                      setConversationalInput('')
-                      setConversationalState({ phase: 'company', companyId: undefined, createdEmployees: [] })
-                    }, 1500)
+                      setExecutePrompt(assistantMessage || '')
+                      setExecuteCompanyId(conversationalState.companyId)
+                      setExecuteModalVisible(true)
+                    }, 500)
                   }
                 }
               } else if (parsed.type === 'error') {
@@ -768,7 +778,7 @@ const Companies: React.FC = () => {
         setFundModalVisible(false)
         fundForm.resetFields()
         // 刷新公司列表
-        window.location.reload()
+        refetchCompanies?.()
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || '注资失败')
@@ -1033,8 +1043,8 @@ const Companies: React.FC = () => {
             </Row>
             <Row gutter={16}>
               <Col xs={24}>
-                <Form.Item name="description" label="📝 项目需求描述">
-                  <Input.TextArea rows={4} placeholder="可选：描述您的项目愿景..." />
+                <Form.Item name="description" label="📝 游戏描述与工作流提示">
+                  <Input.TextArea rows={4} placeholder="请在此填写游戏描述或工作流提示（将作为执行参数）" />
                 </Form.Item>
               </Col>
             </Row>
@@ -1489,6 +1499,79 @@ const Companies: React.FC = () => {
             />
           </Tabs.TabPane>
         </Tabs>
+      </Modal>
+
+      <Modal
+        open={executeModalVisible}
+        title="🎬 执行工作流"
+        okText="立即执行"
+        cancelText="稍后再说"
+        onOk={async () => {
+          if (!executeCompanyId) return
+          try {
+            setExecuteModalLoading(true)
+            const res = await apiClient.post<{
+              success: boolean
+              jobId?: string
+              position?: number
+              etaMs?: number
+            }>(`/companies/${executeCompanyId}/execute`, {
+              project: {
+                projectName: `自动项目 - ${executeCompanyId}`,
+                additionalRequirements: executePrompt,
+              },
+              executionMode: 'sequential',
+              cloudProvider: 'aliyun',
+            })
+
+            if (!res.success) {
+              message.error('自动执行失败')
+              return
+            }
+
+            const jobState: WorkflowJobState = {
+              jobId: res.jobId || 'unknown',
+              status: 'queued',
+              position: res.position || 0,
+              etaMs: res.etaMs || 0,
+            }
+
+            setJobs((prev) => ({ ...prev, [jobState.jobId]: jobState }))
+            message.success('工作流已进入队列')
+            setExecuteModalVisible(false)
+            setCreateCompanyModalVisible(false)
+            setCreateMode('form')
+            setConversationalMessages([])
+            setConversationalInput('')
+            setConversationalState({ phase: 'company', companyId: undefined, createdEmployees: [] })
+            refetchCompanies?.()
+          } catch (err: any) {
+            console.error('执行失败', err)
+            message.error(err?.response?.data?.message || '执行失败')
+          } finally {
+            setExecuteModalLoading(false)
+          }
+        }}
+        onCancel={() => {
+          setExecuteModalVisible(false)
+          // 关闭对话并刷新公司列表
+          setCreateCompanyModalVisible(false)
+          setCreateMode('form')
+          setConversationalMessages([])
+          setConversationalInput('')
+          setConversationalState({ phase: 'company', companyId: undefined, createdEmployees: [] })
+          refetchCompanies?.()
+        }}
+        okButtonProps={{ loading: executeModalLoading }}
+      >
+        <Alert
+          message="是否现在执行工作流？"
+          description="您可以在下方修改或补充项目描述，系统会使用该信息作为工作流的附加要求。"
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+        />
+        <Input.TextArea rows={6} value={executePrompt} onChange={(e) => setExecutePrompt(e.target.value)} />
       </Modal>
 
       <Modal

@@ -200,7 +200,7 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
     const messages = [...(conversationHistory || []), { role: 'user', content: userMessage }];
     const currentPhase = state?.phase || 'company';
     const currentCompanyId = state?.companyId;
-    const createdEmployees = state?.createdEmployees || [];
+    let createdEmployees = state?.createdEmployees || [];
 
     try {
       // 使用流式处理
@@ -299,7 +299,9 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
               logger.info(`用户 ${userId} 为公司 ${currentCompanyId} 雇佣了员工 ${newAgentId}: ${args.name} (${args.type})`);
 
               const updatedEmployees = [...createdEmployees, args.type];
-              
+              // 更新本次流的已创建员工列表，供后续判断
+              createdEmployees = updatedEmployees;
+
               res.write(`data: ${JSON.stringify({ 
                 type: 'success', 
                 content: `员工"${args.name}"（${args.type}）雇佣成功！`,
@@ -307,6 +309,26 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
                 agentType: args.type,
                 phase: 'employees'
               })}\n\n`);
+
+              // 如果已完成 6 名必需员工，调用 suggestProject 并发出 ask_execute 事件
+              try {
+                const REQUIRED_TYPES = ['planner', 'architect', 'artist', 'developer', 'tester', 'music'];
+                const satisfied = REQUIRED_TYPES.every(t => updatedEmployees.includes(t));
+                if (satisfied) {
+                  // 请求模型给出结构化的项目建议
+                  let suggestedProject: any = null;
+                  try {
+                    suggestedProject = await conversationalService.suggestProject(model, messages as any);
+                  } catch (e) {
+                    logger.warn('suggestProject 失败，回退到 assistant 文本', e);
+                    suggestedProject = { additionalRequirements: '' };
+                  }
+
+                  res.write(`data: ${JSON.stringify({ type: 'ask_execute', content: '是否现在执行工作流？', suggestedProject })}\n\n`);
+                }
+              } catch (e) {
+                logger.warn('ask_execute 事件发送失败', e);
+              }
             }
 
             connection.release();
@@ -490,13 +512,21 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
           const remaining = REQUIRED_TYPES.filter(t => !updatedEmployees.includes(t));
 
           if (remaining.length === 0) {
-            // 全部完成
+            // 全部完成：尝试让模型给出结构化的项目建议并返回
+            let suggestedProject = null;
+            try {
+              suggestedProject = await conversationalService.suggestProject(model, messages as any);
+            } catch (e) {
+              logger.warn('suggestProject 失败:', e);
+            }
+
             res.json({
               success: true,
               phase: 'completed',
               companyId,
               createdEmployees: updatedEmployees,
               functionCall: result.functionCall,
+              suggestedProject: suggestedProject || null,
               reply: `恭喜！员工"${args.name}"（${args.type}）雇佣成功！\n\n🎉 您的公司已经完成组建，所有6位必需员工已就位！现在可以开始制作游戏了。`,
             });
           } else {

@@ -267,6 +267,101 @@ export class ConversationalService {
     return { ...result, phase };
   }
 
+  // 基于当前对话，向模型请求一个结构化的项目建议（JSON）
+  async suggestProject(model: string, messages: Message[]): Promise<any> {
+    let client: OpenAI | null = null;
+    let modelName = model;
+
+    if (model.startsWith('deepseek')) {
+      client = this.deepseekClient;
+      if (!client) throw new Error('DeepSeek API key 未配置');
+      modelName = 'deepseek-chat';
+    } else {
+      client = this.openaiClient;
+      if (!client) throw new Error('OpenAI API key 未配置');
+    }
+
+    const systemMessage = {
+      role: 'system' as const,
+      content:
+        '请基于当前对话上下文为该公司建议一个可执行的游戏项目。非常重要：使用函数调用（tools）返回一个单独的 JSON 对象，且只包含该 JSON，不要输出任何附加文字。JSON 结构如下：' +
+        '{"projectName":"string","genre":"string","dimension":"2d|3d","artStyle":"string","additionalRequirements":"string"}。',
+    };
+
+    const suggestProjectFunctionDef = {
+      name: 'suggest_project',
+      description: '返回一个结构化的项目建议，必须只返回一个 JSON 对象',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectName: { type: 'string' },
+          genre: { type: 'string' },
+          dimension: { type: 'string', enum: ['2d', '3d'] },
+          artStyle: { type: 'string' },
+          additionalRequirements: { type: 'string' },
+        },
+        required: ['projectName'],
+      },
+    };
+
+    const resp = await client.chat.completions.create({
+      model: modelName,
+      messages: [systemMessage, ...messages] as any,
+      tools: [{ type: 'function', function: suggestProjectFunctionDef }],
+      tool_choice: 'force',
+      max_tokens: 800,
+    });
+
+    const choice = resp.choices?.[0];
+
+    // Prefer structured function_call arguments
+    const toolCall = choice?.message?.tool_calls?.[0];
+    if (toolCall && toolCall.function && toolCall.function.arguments) {
+      const text = toolCall.function.arguments as string;
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        // try extract first JSON object
+        const s = text.trim();
+        const first = s.indexOf('{');
+        if (first !== -1) {
+          let brace = 0;
+          let end = -1;
+          for (let i = first; i < s.length; i++) {
+            if (s[i] === '{') brace++;
+            else if (s[i] === '}') { brace--; if (brace === 0) { end = i; break; } }
+          }
+          if (end !== -1) {
+            const sub = s.substring(first, end + 1);
+            try { return JSON.parse(sub); } catch (e) { /* fallthrough */ }
+          }
+        }
+        return { additionalRequirements: text };
+      }
+    }
+
+    // Fallback to plain content
+    const text = choice?.message?.content || choice?.message?.text || '';
+    try { return JSON.parse(text as string); } catch (err) {
+      const s = (text as string).trim();
+      const first = s.indexOf('{');
+      if (first !== -1) {
+        let brace = 0;
+        let end = -1;
+        for (let i = first; i < s.length; i++) {
+          if (s[i] === '{') brace++;
+          else if (s[i] === '}') { brace--; if (brace === 0) { end = i; break; } }
+        }
+        if (end !== -1) {
+          const sub = s.substring(first, end + 1);
+          try { return JSON.parse(sub); } catch (e) { /* fallthrough */ }
+        }
+      }
+    }
+
+    return { additionalRequirements: text };
+  }
+
   async processAgentCreation(
     model: string,
     messages: Message[],
