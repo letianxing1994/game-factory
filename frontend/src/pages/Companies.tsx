@@ -25,326 +25,276 @@ import { apiClient } from '../services/api'
 import type {
   ClarificationState,
   Company,
-  GameGenreSelection,
-  PlanningFocusConfig,
-  WorkflowCapacity,
   WorkflowJobState,
+  WorkflowCapacity,
   WorkflowStageStatus,
 } from '../types'
 
-const { Title, Text } = Typography
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
-
-const executionModes = [
-  { label: '顺序', value: 'sequential' },
-  { label: '异步并行', value: 'async_parallel' },
-  { label: '反馈循环', value: 'feedback_loop' },
-]
-
-type ControlAction = 'pause' | 'resume'
-
-interface StageControlState {
+// 类型定义
+type ClarificationModalState = {
   visible: boolean
-  action: ControlAction
+  executionId: string
+  jobId: string
+}
+
+type StageControlState = {
+  visible: boolean
+  action: 'pause' | 'resume'
   stageId: string
   executionId: string
   jobId: string
 }
 
-interface ClarificationModalState {
-  visible: boolean
-  executionId: string
-  jobId: string
-}
-
-// 公司创建表单接口
-interface CompanyFormValues {
+type CompanyFormValues = {
   name: string
   description?: string
   maxEmployees: number
-  workflowType: 'linear' | 'feedback' | 'concurrent'
+  workflowType: string
   initialCapital: number
   workflowPrompt?: string
 }
 
-// 项目执行表单接口
-interface WorkflowFormValues {
+type WorkflowFormValues = {
   projectName: string
-  primaryGenre: string
+  executionMode: string
+  description?: string
+  primaryGenre?: string
   subGenre?: string
   hybridGenres?: string[]
-  dimension: '2d' | '3d'
-  artStyle: string
-  gameMode: 'singleplayer' | 'multiplayer'
-  description?: string
-  executionMode: 'sequential' | 'async_parallel' | 'feedback_loop'
-  cloudProvider: 'aliyun' | 'gcp'
+  dimension?: string
+  artStyle?: string
+  gameMode?: string
   planningCapabilities?: string[]
   planningSystems?: string[]
+  cloudProvider: string
 }
 
-const hasPlanningFocus = (focus?: PlanningFocusConfig) => {
-  if (!focus) return false;
-  if (focus.narrative || focus.numeric || focus.levelDesign) return true;
-  if (focus.systemDesign) {
-    return Object.values(focus.systemDesign).some(Boolean);
-  }
-  return false;
-};
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
-const buildPlanningFocus = (values: WorkflowFormValues): PlanningFocusConfig | undefined => {
-  const focus: PlanningFocusConfig = {};
-  const capabilities = values.planningCapabilities || [];
-  if (capabilities.includes('narrative')) focus.narrative = true;
-  if (capabilities.includes('numeric')) focus.numeric = true;
-  if (capabilities.includes('level')) focus.levelDesign = true;
+const executionModes = [
+  { label: '顺序', value: 'sequential' },
+  { label: '并发', value: 'concurrent' },
+]
 
-  const systems = values.planningSystems || [];
-  if (systems.length) {
-    focus.systemDesign = {
-      growth: systems.includes('growth') || undefined,
-      equipment: systems.includes('equipment') || undefined,
-      social: systems.includes('social') || undefined,
-      combat: systems.includes('combat') || undefined,
-    };
-  }
+// 辅助函数
+const formatEta = (ms: number): string => {
+  if (ms < 60000) return `${Math.round(ms / 1000)}秒`
+  if (ms < 3600000) return `${Math.round(ms / 60000)}分钟`
+  return `${Math.round(ms / 3600000)}小时`
+}
 
-  return hasPlanningFocus(focus) ? focus : undefined;
-};
-
-const buildGenreSelection = (values: WorkflowFormValues): GameGenreSelection => {
-  const hybrid =
-    values.hybridGenres?.filter((genre) => genre && genre !== values.primaryGenre) || [];
+const buildGenreSelection = (values: WorkflowFormValues) => {
   return {
-    primary: values.primaryGenre as GameGenreSelection['primary'],
-    subGenre: values.subGenre as GameGenreSelection['subGenre'],
-    hybrid: hybrid.length ? (hybrid as GameGenreSelection['hybrid']) : undefined,
-  };
-};
-
-const formatEta = (etaMs?: number) => {
-  if (!etaMs || etaMs <= 0) return '排队中'
-  const minutes = Math.floor(etaMs / 60000)
-  const seconds = Math.floor((etaMs % 60000) / 1000)
-  return `${minutes}分${seconds}秒`
+    primary: values.primaryGenre || 'rpg',
+    subGenre: values.subGenre,
+    hybrid: values.hybridGenres,
+  }
 }
 
-const StageControlModal: React.FC<{
-  state: StageControlState
-  onSubmit: (notes?: string) => Promise<void>
-  onCancel: () => void
-}> = ({ state, onSubmit, onCancel }) => {
-  const [notes, setNotes] = useState('')
-  useEffect(() => {
-    if (!state.visible) {
-      setNotes('')
-    }
-  }, [state.visible])
-
-  return (
-    <Modal
-      open={state.visible}
-      title={state.action === 'pause' ? '暂停阶段' : '恢复阶段'}
-      onOk={() => onSubmit(notes)}
-      onCancel={onCancel}
-      okText="确认"
-      cancelText="取消"
-    >
-      <p className="mb-3 text-sm text-gray-600">
-        阶段 <strong>{state.stageId}</strong> 将被
-        {state.action === 'pause' ? '暂停' : '恢复'}。可以在下方备注原因或提示。
-      </p>
-      <Input.TextArea
-        rows={4}
-        value={notes}
-        placeholder="备注或补充信息（可选）"
-        onChange={(e) => setNotes(e.target.value)}
-      />
-    </Modal>
-  )
-}
-
-interface CompanyEmployeesCardProps {
-  companyId: number
-}
-
-const CompanyEmployeesCard: React.FC<CompanyEmployeesCardProps> = ({ companyId }) => {
-  const { data: employeesRes, isLoading } = useQuery(
-    ['company', companyId, 'employees'],
-    async () => {
-      const res = await apiClient.get<{ success: boolean; data: any[] }>(
-        `/companies/${companyId}/employees`
-      )
-      return res
+const buildPlanningFocus = (values: WorkflowFormValues) => {
+  if (!values.planningCapabilities && !values.planningSystems) return null
+  return {
+    narrative: values.planningCapabilities?.includes('narrative'),
+    numeric: values.planningCapabilities?.includes('numeric'),
+    levelDesign: values.planningCapabilities?.includes('level'),
+    systemDesign: {
+      growth: values.planningSystems?.includes('growth'),
+      equipment: values.planningSystems?.includes('equipment'),
+      social: values.planningSystems?.includes('social'),
+      combat: values.planningSystems?.includes('combat'),
     },
-    { enabled: !!companyId }
-  )
+  }
+}
 
-  const employees = employeesRes?.data || []
+// CompanyEmployeesCard组件
+const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }> = ({ companyId, embedded }) => {
+  const [employees, setEmployees] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!companyId) {
+      setEmployees([])
+      return
+    }
+    setLoading(true)
+    apiClient.get<{ success: boolean; data: any[] }>(`/companies/${companyId}/employees`)
+      .then((res) => {
+        setEmployees(res.data || [])
+      })
+      .catch(() => setEmployees([]))
+      .finally(() => setLoading(false))
+  }, [companyId])
+
+  if (embedded) {
+    return (
+      <Card title="公司员工" loading={loading}>
+        {employees.length === 0 ? (
+          <Alert
+            message="暂无员工"
+            description="请前往员工市场招聘"
+            type="warning"
+            showIcon
+          />
+        ) : (
+          <List
+            dataSource={employees}
+            renderItem={(emp: any) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={emp.name}
+                  description={`${emp.type} · ${emp.specialization}`}
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Card>
+    )
+  }
 
   return (
-    <Card title="公司员工" extra={<Text type="secondary">{employees.length} 名员工</Text>}>
-      {isLoading ? (
-        <Alert message="加载中..." type="info" showIcon />
-      ) : employees.length === 0 ? (
-        <Alert message="暂无员工，请前往员工市场招聘" type="warning" showIcon />
+    <Card title="公司员工" loading={loading}>
+      {employees.length === 0 ? (
+        <Alert
+          message="暂无员工"
+          description="请前往员工市场招聘"
+          type="warning"
+          showIcon
+        />
       ) : (
-        <Table
-          size="small"
-          pagination={false}
+        <List
           dataSource={employees}
-          rowKey="id"
-          columns={[
-            {
-              title: '员工ID',
-              dataIndex: 'id',
-              width: 80,
-            },
-            {
-              title: '类型',
-              dataIndex: 'type',
-              width: 100,
-              render: (type: string) => {
-                const typeMap: Record<string, string> = {
-                  planner: '策划',
-                  artist: '美术',
-                  developer: '技术',
-                  tester: '测试',
-                }
-                return <Tag color="blue">{typeMap[type] || type}</Tag>
-              },
-            },
-            {
-              title: '维度',
-              dataIndex: 'dimension',
-              width: 80,
-              render: (dimension: string) =>
-                dimension ? <Tag color={dimension === '3d' ? 'purple' : 'cyan'}>{dimension.toUpperCase()}</Tag> : '--',
-            },
-            {
-              title: 'AI模型',
-              dataIndex: 'ai_model',
-              ellipsis: true,
-            },
-            {
-              title: '技能',
-              dataIndex: 'skills',
-              render: (skills: string | string[]) => {
-                const skillArray = Array.isArray(skills) ? skills : JSON.parse(skills || '[]')
-                return skillArray.slice(0, 3).map((skill: string) => (
-                  <Tag key={skill} style={{ fontSize: '11px' }}>
-                    {skill}
-                  </Tag>
-                ))
-              },
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              width: 80,
-              render: (status: string) => (
-                <Tag color={status === 'employed' ? 'green' : 'default'}>
-                  {status === 'employed' ? '在职' : status}
-                </Tag>
-              ),
-            },
-          ]}
+          renderItem={(emp: any) => (
+            <List.Item>
+              <List.Item.Meta
+                title={emp.name}
+                description={`${emp.type} · ${emp.specialization}`}
+              />
+            </List.Item>
+          )}
         />
       )}
     </Card>
   )
 }
 
-const Companies: React.FC = () => {
-  const [form] = Form.useForm<WorkflowFormValues>()
-  const [companyForm] = Form.useForm<CompanyFormValues>()
-  const [fundForm] = Form.useForm<{ amount: number }>()
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number>()
-  const [jobs, setJobs] = useState<Record<string, WorkflowJobState>>({})
-  const [loadingQueue, setLoadingQueue] = useState(false)
-  const [createCompanyModalVisible, setCreateCompanyModalVisible] = useState(false)
-  const [fundModalVisible, setFundModalVisible] = useState(false)
-  const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
-  const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
-  const [conversationalInput, setConversationalInput] = useState('')
-  const [conversationalLoading, setConversationalLoading] = useState(false)
-  const [conversationalModel, setConversationalModel] = useState('gpt-4o')
-  const [conversationalState, setConversationalState] = useState<{
-    phase?: string
-    companyId?: number
-    createdEmployees?: string[]
-  }>({})
-  const [controlModal, setControlModal] = useState<StageControlState>({
-    visible: false,
-    action: 'pause',
-    executionId: '',
-    stageId: '',
-    jobId: '',
-  })
-  const [clarificationModal, setClarificationModal] = useState<ClarificationModalState>({
-    visible: false,
-    executionId: '',
-    jobId: '',
-  })
-  const [clarification, setClarification] = useState<ClarificationState | null>(null)
-  const [clarResponses, setClarResponses] = useState<Record<string, string>>({})
-  const [clarLoading, setClarLoading] = useState(false)
-  const clarStreamController = useRef<AbortController | null>(null)
-  const [executeModalVisible, setExecuteModalVisible] = useState(false)
-  const [executeModalLoading, setExecuteModalLoading] = useState(false)
-  const [executePrompt, setExecutePrompt] = useState('')
-  const [executeCompanyId, setExecuteCompanyId] = useState<number | undefined>(undefined)
-
-  const { data: companiesRes, refetch: refetchCompanies } = useQuery(['companies', 'mine'], async () => {
-    const res = await apiClient.get<{ success: boolean; data: Company[] }>('/companies/my')
-    return res
-  })
-
-  const { data: capacityRes } = useQuery(
-    ['workflow', 'capacity'],
-    async () => {
-      const res = await apiClient.get<{ success: boolean; data: WorkflowCapacity }>(
-        '/workflows/capacity'
-      )
-      return res
-    },
-    { refetchInterval: 15000 }
+// StageControlModal组件
+const StageControlModal: React.FC<{
+  state: StageControlState
+  onSubmit: (notes?: string) => void
+  onCancel: () => void
+}> = ({ state, onSubmit, onCancel }) => {
+  const [notes, setNotes] = useState('')
+  if (!state.visible) return null
+  return (
+    <Modal
+      open={state.visible}
+      title={state.action === 'pause' ? '暂停阶段' : '恢复阶段'}
+      onOk={() => onSubmit(notes)}
+      onCancel={onCancel}
+    >
+      <Input.TextArea
+        rows={3}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="可选：添加备注说明"
+      />
+    </Modal>
   )
+}
 
-  const selectedCompany = useMemo(() => {
-    return companiesRes?.data?.find(c => c.id === selectedCompanyId)
-  }, [companiesRes, selectedCompanyId])
+// 组件入口
+const Companies: React.FC = () => {
+    const [companyTabKey, setCompanyTabKey] = useState<'overview' | 'workflow'>('overview')
+    const [selectedCompanyId, setSelectedCompanyId] = useState<number | undefined>(undefined)
 
-  useEffect(() => {
-    if (!selectedCompanyId && companiesRes?.success && companiesRes.data.length > 0) {
-      setSelectedCompanyId(companiesRes.data[0].id)
-    }
-  }, [companiesRes, selectedCompanyId])
+    const [createCompanyModalVisible, setCreateCompanyModalVisible] = useState(false)
+    const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
+    const [companyForm] = Form.useForm()
+    const [form] = Form.useForm()
+    const [fundForm] = Form.useForm()
 
-  const fetchJobList = useCallback(async () => {
-    if (!selectedCompanyId) return
-    setLoadingQueue(true)
-    try {
-      const res = await apiClient.get<{ success: boolean; data: WorkflowJobState[] }>(
-        '/workflows/jobs',
-        { companyId: selectedCompanyId }
-      )
-      if (res.success) {
-        const mapped = res.data.reduce<Record<string, WorkflowJobState>>((acc, job) => {
-          acc[job.jobId] = job
-          return acc
-        }, {})
-        setJobs(mapped)
+    const [fundModalVisible, setFundModalVisible] = useState(false)
+
+    const [executeModalVisible, setExecuteModalVisible] = useState(false)
+    const [executePrompt, setExecutePrompt] = useState('')
+    const [executeCompanyId, setExecuteCompanyId] = useState<number | undefined>(undefined)
+    const [executeModalLoading, setExecuteModalLoading] = useState(false)
+
+    const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+    const [conversationalInput, setConversationalInput] = useState('')
+    const [conversationalLoading, setConversationalLoading] = useState(false)
+    const [conversationalModel, setConversationalModel] = useState('gpt-4o')
+    const [conversationalState, setConversationalState] = useState<any>({ phase: 'company', companyId: undefined, createdEmployees: [] })
+
+    const [jobs, setJobs] = useState<Record<string, WorkflowJobState>>({})
+    const [loadingQueue, setLoadingQueue] = useState(false)
+
+    const clarStreamController = useRef<AbortController | null>(null)
+    const [clarification, setClarification] = useState<ClarificationState | null>(null)
+    const [clarificationModal, setClarificationModal] = useState<ClarificationModalState>({ visible: false, executionId: '', jobId: '' })
+    const [clarResponses, setClarResponses] = useState<Record<string, string>>({})
+    const [clarLoading, setClarLoading] = useState(false)
+
+    const [controlModal, setControlModal] = useState<StageControlState>({ visible: false, action: 'pause', stageId: '', executionId: '', jobId: '' })
+
+    const [employees, setEmployees] = useState<any[]>([])
+
+    // 公司列表（react-query）
+    const { data: companiesRes, refetch: refetchCompanies } = useQuery(['companies'], async () => apiClient.get<{ success: boolean; data: Company[] }>('/companies'))
+
+    // 生产线容量（简要）
+    const capacityRes = useQuery(['capacity'], async () => apiClient.get<{ success: boolean; data: WorkflowCapacity }>('/workflows/capacity'))
+
+    // 已解散公司历史
+    const [dissolvedCompanies, setDissolvedCompanies] = useState<any[]>([])
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const historyQuery = useQuery(['companies_history'], async () => apiClient.get<{ success: boolean; data: any[] }>('/companies/history'), {
+      enabled: false,
+      onSuccess: (res) => setDissolvedCompanies(res.data || []),
+      onSettled: () => setHistoryLoading(false),
+    })
+    const refetchHistory = useCallback(() => {
+      setHistoryLoading(true)
+      void historyQuery.refetch()
+    }, [historyQuery])
+
+    const selectedCompany = useMemo(() => companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId), [companiesRes, selectedCompanyId])
+
+    const [historyModalVisible, setHistoryModalVisible] = useState(false)
+
+    const fetchJobList = useCallback(async () => {
+      if (!selectedCompanyId) return
+      setLoadingQueue(true)
+      try {
+        const res = await apiClient.get<{ success: boolean; data: WorkflowJobState[] }>(
+          '/workflows/jobs',
+          { companyId: selectedCompanyId }
+        )
+        if (res.success) {
+          const mapped = res.data.reduce<Record<string, WorkflowJobState>>((acc, job) => {
+            acc[job.jobId] = job
+            return acc
+          }, {})
+          setJobs(mapped)
+        }
+      } catch (error) {
+        console.error('加载任务列表失败', error)
+      } finally {
+        setLoadingQueue(false)
       }
-    } catch (error) {
-      console.error('加载任务列表失败', error)
-    } finally {
-      setLoadingQueue(false)
-    }
-  }, [selectedCompanyId])
+    }, [selectedCompanyId])
 
-  const refreshJob = useCallback(
+    const openHistoryModal = useCallback(() => {
+      setHistoryModalVisible(true)
+      refetchHistory()
+    }, [refetchHistory])
+
+    const closeHistoryModal = useCallback(() => {
+      setHistoryModalVisible(false)
+    }, [])
+
+    const refreshJob = useCallback(
     async (jobId: string) => {
       try {
         const jobRes = await apiClient.get<{ success: boolean; data: WorkflowJobState }>(
@@ -631,6 +581,7 @@ const Companies: React.FC = () => {
             )
             refetchCompanies?.()
             setSelectedCompanyId(undefined)
+            refetchHistory()
           } else {
             message.error(data.message || '解散公司失败')
           }
@@ -882,7 +833,7 @@ const Companies: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Title level={2} className="!mb-0 bg3-title" style={{ 
+        <Typography.Title level={2} className="!mb-0 bg3-title" style={{ 
           fontFamily: "'Cinzel Decorative', 'Microsoft YaHei', serif",
           fontSize: '32px',
           color: '#f5e6d3',
@@ -894,8 +845,8 @@ const Companies: React.FC = () => {
           display: 'inline-block'
         }}>
           🔥 游戏工厂 - 公司管理中心 🔥
-        </Title>
-        <Space>
+        </Typography.Title>
+        <Space wrap>
           <Button type="primary" size="large" onClick={() => setCreateCompanyModalVisible(true)}>
             ✨ 创建公司
           </Button>
@@ -907,13 +858,11 @@ const Companies: React.FC = () => {
           >
             💰 注资
           </Button>
-          <Button
-            danger
-            size="large"
-            disabled={!selectedCompanyId}
-            onClick={handleDissolveCompany}
-          >
-            🔥 解散公司
+          <Button size="large" onClick={() => {
+            setHistoryModalVisible(true)
+            refetchHistory()
+          }}>
+            📚 已解散公司
           </Button>
           <Select
             value={selectedCompanyId}
@@ -952,7 +901,7 @@ const Companies: React.FC = () => {
           <Card bordered style={{ background: 'linear-gradient(135deg, rgba(250, 173, 20, 0.1) 0%, rgba(250, 173, 20, 0.05) 100%)' }}>
             <Statistic
               title="📋 排队任务"
-              value={capacityRes?.data?.queued ?? 0}
+              value={capacityRes?.data?.data?.queued ?? 0}
               suffix="个"
               valueStyle={{ color: '#faad14', fontWeight: 700, fontSize: '28px' }}
             />
@@ -962,7 +911,7 @@ const Companies: React.FC = () => {
           <Card bordered>
             <Statistic
               title="运行中"
-              value={capacityRes?.data?.running ?? 0}
+              value={capacityRes?.data?.data?.running ?? 0}
               suffix="个"
             />
           </Card>
@@ -971,21 +920,26 @@ const Companies: React.FC = () => {
           <Card bordered>
             <Statistic
               title="平均耗时"
-              value={Math.round((capacityRes?.data?.avgDurationMs ?? 0) / 60000)}
+              value={Math.round((capacityRes?.data?.data?.avgDurationMs ?? 0) / 60000)}
               suffix="分钟/Stage"
             />
           </Card>
         </Col>
       </Row>
 
-      {selectedCompanyId && (
-        <CompanyEmployeesCard companyId={selectedCompanyId} />
-      )}
-
       <Card 
-        title={selectedCompany ? `🎮 ${selectedCompany.name} - 启动新项目` : "启动新游戏项目"}
+        title={selectedCompany ? `🎮 ${selectedCompany.name}` : "公司管理"}
         extra={selectedCompany && (
-          <Tag color="green">当前公司</Tag>
+          <Space>
+            <Tag color="green">当前公司</Tag>
+            <Button 
+              danger 
+              size="small"
+              onClick={handleDissolveCompany}
+            >
+              🔥 解散公司
+            </Button>
+          </Space>
         )}
       >
         {!selectedCompanyId ? (
@@ -1000,7 +954,54 @@ const Companies: React.FC = () => {
             }}
           />
         ) : (
-          <Form
+          <Tabs activeKey={companyTabKey} onChange={(key) => setCompanyTabKey(key as 'overview' | 'workflow')}>
+            <Tabs.TabPane tab="公司概览" key="overview">
+              <Row gutter={16}>
+                <Col xs={24} lg={6}>
+                  <Card bordered style={{ background: 'linear-gradient(135deg, rgba(82, 196, 26, 0.1) 0%, rgba(82, 196, 26, 0.05) 100%)' }}>
+                    <Statistic
+                      title="💰 公司资金"
+                      value={selectedCompany?.currentCapital ?? 0}
+                      suffix="币"
+                      valueStyle={{ color: '#52c41a', fontWeight: 700, fontSize: '28px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} lg={6}>
+                  <Card bordered style={{ background: 'linear-gradient(135deg, rgba(24, 144, 255, 0.1) 0%, rgba(24, 144, 255, 0.05) 100%)' }}>
+                    <Statistic
+                      title="👥 公司员工"
+                      value={selectedCompany?.currentEmployees ?? 0}
+                      suffix={`/ ${selectedCompany?.maxEmployees ?? 0}`}
+                      valueStyle={{ color: '#1890ff', fontWeight: 700, fontSize: '28px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} lg={6}>
+                  <Card bordered style={{ background: 'linear-gradient(135deg, rgba(250, 173, 20, 0.1) 0%, rgba(250, 173, 20, 0.05) 100%)' }}>
+                    <Statistic
+                      title="📋 排队任务"
+                      value={capacityRes?.data?.data?.queued ?? 0}
+                      suffix="个"
+                      valueStyle={{ color: '#faad14', fontWeight: 700, fontSize: '28px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} lg={6}>
+                  <Card bordered>
+                    <Statistic
+                      title="运行中"
+                      value={capacityRes?.data?.data?.running ?? 0}
+                      suffix="个"
+                    />
+                  </Card>
+                </Col>
+              </Row>
+              <Divider />
+              <CompanyEmployeesCard companyId={selectedCompanyId} embedded />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab="启动新项目" key="workflow">
+              <Form
             form={form}
             layout="vertical"
             onFinish={handleRunWorkflow}
@@ -1084,6 +1085,8 @@ const Companies: React.FC = () => {
               </Col>
             </Row>
           </Form>
+            </Tabs.TabPane>
+          </Tabs>
         )}
       </Card>
 
@@ -1116,7 +1119,7 @@ const Companies: React.FC = () => {
               className="mb-4"
               title={
                 <Space>
-                  <Text strong>任务 {job.jobId}</Text>
+                  <Typography.Text strong>任务 {job.jobId}</Typography.Text>
                   <Tag
                     color={
                       job.status === 'completed'
@@ -1162,7 +1165,7 @@ const Companies: React.FC = () => {
                 <Col xs={24} md={6}>
                   <Statistic
                     title="预计开始"
-                    value={formatEta(job.etaMs)}
+                    value={formatEta(job.etaMs || 0)}
                   />
                 </Col>
                 <Col xs={24} md={6}>
@@ -1254,6 +1257,41 @@ const Companies: React.FC = () => {
         )}
       </Card>
 
+      <Modal
+        open={historyModalVisible}
+        onCancel={closeHistoryModal}
+        footer={null}
+        title="已解散的公司"
+        width={720}
+      >
+        {dissolvedCompanies.length === 0 ? (
+          <Alert
+            message={historyLoading ? '正在加载历史公司...' : '暂无已解散的公司'}
+            type={historyLoading ? 'info' : 'warning'}
+            showIcon
+          />
+        ) : (
+          <Table
+            size="small"
+            loading={historyLoading}
+            pagination={false}
+            rowKey="id"
+            dataSource={dissolvedCompanies}
+            columns={[
+              { title: '公司名称', dataIndex: 'name' },
+              { title: '工作流模式', dataIndex: 'workflowType', render: (value: string) => value || '--' },
+              { title: '初始资金', dataIndex: 'initialCapital', render: (value: number) => `${value} 币` },
+              { title: '退还资金', dataIndex: 'currentCapital', render: (value: number) => `${value} 币` },
+              {
+                title: '解散时间',
+                dataIndex: 'updatedAt',
+                render: (value: string) => (value ? new Date(value).toLocaleString() : '--'),
+              },
+            ]}
+          />
+        )}
+      </Modal>
+
       <StageControlModal
         state={controlModal}
         onSubmit={handleControlStage}
@@ -1277,7 +1315,7 @@ const Companies: React.FC = () => {
           <>
             <List
               size="small"
-              header={<Text strong>协作记录</Text>}
+              header={<Typography.Text strong>协作记录</Typography.Text>}
               dataSource={clarification.conversation.slice(-10)}
               locale={{ emptyText: '暂无记录' }}
               renderItem={(item) => (
@@ -1398,16 +1436,16 @@ const Companies: React.FC = () => {
                   <div style={{ color: '#d4c5a9' }}>
                     通过对话，我将帮您创建公司并雇佣6位必需员工：
                     <br />
-                    <Text style={{ color: '#e8c468', fontSize: '12px' }}>
+                    <Typography.Text style={{ color: '#e8c468', fontSize: '12px' }}>
                       ✅ 策划（Planner） · ✅ 架构师（Architect） · ✅ 美术（Artist）
                       <br />
                       ✅ 研发（Developer） · ✅ 测试（Tester） · ✅ 音频（Music）
-                    </Text>
+                    </Typography.Text>
                     <br />
                     {conversationalState.createdEmployees && conversationalState.createdEmployees.length > 0 && (
-                      <Text style={{ color: '#90EE90', fontSize: '12px' }}>
+                      <Typography.Text style={{ color: '#90EE90', fontSize: '12px' }}>
                         已创建: {conversationalState.createdEmployees.join('、')} ({conversationalState.createdEmployees.length}/6)
-                      </Text>
+                      </Typography.Text>
                     )}
                   </div>
                 }
@@ -1421,7 +1459,7 @@ const Companies: React.FC = () => {
             </div>
             <div style={{ marginBottom: 12 }}>
               <Space>
-                <Text style={{ color: '#d4af37', fontWeight: 600 }}>🤖 AI模型:</Text>
+                <Typography.Text style={{ color: '#d4af37', fontWeight: 600 }}>🤖 AI模型:</Typography.Text>
                 <Select
                   value={conversationalModel}
                   style={{ width: 200 }}
@@ -1446,8 +1484,8 @@ const Companies: React.FC = () => {
             }}>
               {conversationalMessages.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '80px 20px', color: '#c8a060' }}>
-                  <Text style={{ fontSize: '16px' }}>👋 你好！我是创建助手</Text><br/>
-                  <Text style={{ fontSize: '14px', color: '#d4c5a9' }}>请告诉我您想创建什么样的公司？</Text>
+                  <Typography.Text style={{ fontSize: '16px' }}>👋 你好！我是创建助手</Typography.Text><br/>
+                  <Typography.Text style={{ fontSize: '14px', color: '#d4c5a9' }}>请告诉我您想创建什么样的公司？</Typography.Text>
                 </div>
               ) : (
                 conversationalMessages.map((msg, idx) => (
@@ -1466,9 +1504,9 @@ const Companies: React.FC = () => {
                       border: '1px solid rgba(200, 140, 80, 0.3)',
                       color: '#f5e6d3'
                     }}>
-                      <Text style={{ color: msg.role === 'user' ? '#FFD76E' : '#e8c468', fontSize: '12px' }}>
+                      <Typography.Text style={{ color: msg.role === 'user' ? '#FFD76E' : '#e8c468', fontSize: '12px' }}>
                         {msg.role === 'user' ? '👤 您' : '🤖 助手'}
-                      </Text>
+                      </Typography.Text>
                       <div style={{ marginTop: '4px', color: '#f5e6d3', whiteSpace: 'pre-wrap' }}>
                         {msg.content}
                       </div>
@@ -1478,7 +1516,7 @@ const Companies: React.FC = () => {
               )}
               {conversationalLoading && (
                 <div style={{ textAlign: 'center', color: '#c8a060' }}>
-                  <Text>🤔 思考中...</Text>
+                  <Typography.Text>🤔 思考中...</Typography.Text>
                 </div>
               )}
             </div>

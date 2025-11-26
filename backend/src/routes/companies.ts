@@ -629,10 +629,10 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
 
     const companies = await query<any[]>(
       `SELECT c.*, 
-        (SELECT COUNT(*) FROM agents a 
-         WHERE a.company_id = c.id AND a.status = 'employed') as current_employees
+        (SELECT COUNT(*) FROM company_employees ce 
+         WHERE ce.company_id = c.id AND ce.status = 'active') as current_employees
        FROM companies c 
-       WHERE c.owner_id = ? 
+       WHERE c.owner_id = ? AND c.status = 'active'
        ORDER BY c.created_at DESC`,
       [userId]
     );
@@ -655,6 +655,53 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
     res.status(500).json({ 
       success: false, 
       message: '获取公司列表失败' 
+    });
+  }
+});
+
+// 获取已解散公司历史
+router.get('/history', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const cacheKey = `user:${userId}:companies:history`;
+
+    // 尝试从缓存获取
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      return res.json({
+        success: true,
+        data: JSON.parse(cachedData)
+      });
+    }
+
+    const companies = await query<any[]>(
+      `SELECT c.*, 
+        (SELECT COUNT(*) FROM company_employees ce 
+         WHERE ce.company_id = c.id AND ce.status = 'terminated') as total_employees
+       FROM companies c 
+       WHERE c.owner_id = ? AND c.status = 'dissolved'
+       ORDER BY c.updated_at DESC`,
+      [userId]
+    );
+
+    const formatted = companies.map(company => ({
+      ...company,
+      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null
+    }));
+
+    // 缓存数据
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(formatted)); // 5分钟缓存
+
+    res.json({
+      success: true,
+      data: formatted
+    });
+
+  } catch (error) {
+    logger.error('获取已解散公司历史失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '获取已解散公司历史失败' 
     });
   }
 });
@@ -683,18 +730,17 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
+    // 从数据库查询
     const companies = await query<any[]>(
-      `SELECT c.*, u.username as owner_name,
-        (SELECT COUNT(*) FROM company_employees ce 
-         WHERE ce.company_id = c.id AND ce.status = 'active') as current_employees,
-        (SELECT COUNT(*) FROM games g 
-         WHERE g.company_id = c.id AND g.status = 'published') as published_games
+      `SELECT c.*, 
+        (SELECT COUNT(*) FROM agents a 
+         WHERE a.company_id = c.id AND a.status = 'employed') as current_employees
        FROM companies c 
-       JOIN users u ON c.owner_id = u.id 
-       WHERE c.id = ?`,
-      [id]
+       WHERE c.id = ? AND c.owner_id = ? AND c.status = 'active'
+       LIMIT 1`,
+      [id, userId]
     );
-
+    
     if (companies.length === 0) {
       return res.status(404).json({ 
         success: false, 
@@ -706,14 +752,6 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
       ...companies[0],
       workflow_config: companies[0].workflow_config ? JSON.parse(companies[0].workflow_config) : null
     };
-
-    // 检查权限
-    if (company.owner_id !== userId) {
-      return res.status(403).json({ 
-        success: false, 
-        message: '无权访问此公司信息' 
-      });
-    }
 
     // 缓存数据
     await redisClient.setEx(cacheKey, 300, JSON.stringify(company)); // 5分钟缓存
@@ -1345,7 +1383,7 @@ router.delete('/:id/dissolve', authenticate, async (req: AuthRequest, res) => {
 
     // 更新公司状态为已解散
     await connection.execute(
-      'UPDATE companies SET status = ? WHERE id = ?',
+      'UPDATE companies SET status = ?, updated_at = NOW() WHERE id = ?',
       ['dissolved', companyId]
     );
 
@@ -1378,6 +1416,7 @@ router.delete('/:id/dissolve', authenticate, async (req: AuthRequest, res) => {
     // 清除缓存
     await redisClient.del(`user:${userId}:companies`);
     await redisClient.del(`user:${userId}:balance`);
+    await redisClient.del(`user:${userId}:companies:history`);
     await redisClient.del(`company:${companyId}:employees`);
 
     logger.info(`用户 ${userId} 解散了公司 ${companyId}: ${company.name}, 退还资金 ${company.current_capital}, 处理员工 ${employees.length} 名`);
