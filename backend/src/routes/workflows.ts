@@ -46,10 +46,7 @@ router.post(
       const company = companies[0];
       const workflowConfig = company.workflow_config ? JSON.parse(company.workflow_config) : {};
       const employees = await query<any[]>(
-        `SELECT ea.*
-         FROM company_employees ce 
-         JOIN employee_agents ea ON ce.employee_id = ea.id
-         WHERE ce.company_id = ? AND ce.status = 'active'`,
+        `SELECT * FROM agents WHERE company_id = ? AND status = 'employed'`,
         [companyId]
       );
 
@@ -260,7 +257,7 @@ router.post('/agents/:agentId/preview', authenticate, async (req: AuthRequest, r
     const { agentId } = req.params;
     const userId = req.user!.id;
     const agents = await query<any[]>(
-      'SELECT * FROM employee_agents WHERE id = ? AND owner_id = ?',
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
       [agentId, userId]
     );
     if (!agents.length) {

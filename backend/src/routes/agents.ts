@@ -209,12 +209,14 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
 
         // 创建员工
         const agentResult = await connection.execute(
-          `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'available')`,
+          `INSERT INTO agents (name, type, dimension, owner_id, company_id, ai_model, specialization, extra_traits, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employed')`,
           [
             args.name,
             args.type,
             args.dimension,
+            userId,
+            companyId,
             args.ai_model,
             args.specialization,
             args.extra_traits || null,
@@ -222,19 +224,6 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
         );
 
         const agentId = (agentResult[0] as any).insertId;
-
-        // 关联到公司
-        await connection.execute(
-          `INSERT INTO company_employees (company_id, employee_id, status, hired_at)
-           VALUES (?, ?, 'active', NOW())`,
-          [companyId, agentId]
-        );
-
-        // 更新员工状态
-        await connection.execute(
-          `UPDATE employee_agents SET status = 'employed' WHERE id = ?`,
-          [agentId]
-        );
 
         await connection.commit();
 

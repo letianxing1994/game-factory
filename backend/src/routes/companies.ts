@@ -280,27 +280,13 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
             } else {
               // 创建员工
               const agentResult = await connection.execute(
-                `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
-                 VALUES (?, ?, ?, ?, ?, ?, 'available')`,
-                [args.name, args.type, args.dimension, args.ai_model, args.specialization, args.extra_traits || null]
+                `INSERT INTO agents (name, type, dimension, owner_id, company_id, ai_model, specialization, extra_traits, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employed')`,
+                [args.name, args.type, args.dimension, userId, currentCompanyId, args.ai_model, args.specialization, args.extra_traits || null]
               );
               const newAgentId = (agentResult[0] as any).insertId;
-
-              await connection.execute(
-                `INSERT INTO company_employees (company_id, employee_id, status, hired_at) VALUES (?, ?, 'active', NOW())`,
-                [currentCompanyId, newAgentId]
-              );
-              await connection.execute(`UPDATE employee_agents SET status = 'employed' WHERE id = ?`, [newAgentId]);
-
-              await connection.commit();
-              await redisClient.del(`user:${userId}:agents:all:all`);
-              await redisClient.del(`company:${currentCompanyId}:employees`);
-
-              logger.info(`用户 ${userId} 为公司 ${currentCompanyId} 雇佣了员工 ${newAgentId}: ${args.name} (${args.type})`);
-
-              const updatedEmployees = [...createdEmployees, args.type];
               // 更新本次流的已创建员工列表，供后续判断
-              createdEmployees = updatedEmployees;
+              createdEmployees = [...createdEmployees, args.type];
 
               res.write(`data: ${JSON.stringify({ 
                 type: 'success', 
@@ -313,7 +299,7 @@ router.post('/conversational', authenticate, async (req: AuthRequest, res) => {
               // 如果已完成 6 名必需员工，调用 suggestProject 并发出 ask_execute 事件
               try {
                 const REQUIRED_TYPES = ['planner', 'architect', 'artist', 'developer', 'tester', 'music'];
-                const satisfied = REQUIRED_TYPES.every(t => updatedEmployees.includes(t));
+                const satisfied = REQUIRED_TYPES.every(t => createdEmployees.includes(t));
                 if (satisfied) {
                   // 请求模型给出结构化的项目建议
                   let suggestedProject: any = null;
@@ -470,7 +456,7 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
           // 阶段2：创建员工
           // 检查员工总数限制（最多30个）
           const agentCount = await connection.execute(
-            'SELECT COUNT(*) as count FROM employee_agents WHERE id IN (SELECT employee_id FROM company_employees WHERE company_id IN (SELECT id FROM companies WHERE owner_id = ?))',
+            'SELECT COUNT(*) as count FROM agents WHERE company_id IN (SELECT id FROM companies WHERE owner_id = ?)',
             [userId]
           );
           const currentAgentCount = agentCount[0][0]?.count || 0;
@@ -484,18 +470,11 @@ router.post('/conversational-create', authenticate, async (req: AuthRequest, res
 
           // 创建员工
           const agentResult = await connection.execute(
-            `INSERT INTO employee_agents (name, type, dimension, ai_model, specialization, extra_traits, status)
-             VALUES (?, ?, ?, ?, ?, ?, 'available')`,
-            [args.name, args.type, args.dimension, args.ai_model, args.specialization, args.extra_traits || null]
+            `INSERT INTO agents (name, type, dimension, owner_id, company_id, ai_model, specialization, extra_traits, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employed')`,
+            [args.name, args.type, args.dimension, userId, companyId, args.ai_model, args.specialization, args.extra_traits || null]
           );
           const newAgentId = (agentResult[0] as any).insertId;
-
-          // 关联到公司
-          await connection.execute(
-            `INSERT INTO company_employees (company_id, employee_id, status, hired_at) VALUES (?, ?, 'active', NOW())`,
-            [companyId, newAgentId]
-          );
-          await connection.execute(`UPDATE employee_agents SET status = 'employed' WHERE id = ?`, [newAgentId]);
 
           await connection.commit();
           await kafkaProducer.send({
@@ -588,10 +567,7 @@ router.post('/:companyId/execute', authenticate, validateWorkflowExecution, asyn
     const company = companies[0];
     const workflowConfig = company.workflow_config ? JSON.parse(company.workflow_config) : {};
     const employees = await query<any[]>(
-      `SELECT ea.*
-       FROM company_employees ce 
-       JOIN employee_agents ea ON ce.employee_id = ea.id
-       WHERE ce.company_id = ? AND ce.status = 'active'`,
+      `SELECT * FROM agents WHERE company_id = ? AND status = 'employed'`,
       [companyId]
     );
 
@@ -629,8 +605,8 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
 
     const companies = await query<any[]>(
       `SELECT c.*, 
-        (SELECT COUNT(*) FROM company_employees ce 
-         WHERE ce.company_id = c.id AND ce.status = 'active') as current_employees
+        (SELECT COUNT(*) FROM agents 
+         WHERE company_id = c.id AND status = 'employed') as current_employees
        FROM companies c 
        WHERE c.owner_id = ? AND c.status = 'active'
        ORDER BY c.created_at DESC`,
@@ -676,8 +652,7 @@ router.get('/history', authenticate, async (req: AuthRequest, res) => {
 
     const companies = await query<any[]>(
       `SELECT c.*, 
-        (SELECT COUNT(*) FROM company_employees ce 
-         WHERE ce.company_id = c.id AND ce.status = 'terminated') as total_employees
+        (SELECT COUNT(*) FROM agents WHERE company_id = c.id) as total_employees
        FROM companies c 
        WHERE c.owner_id = ? AND c.status = 'dissolved'
        ORDER BY c.updated_at DESC`,
@@ -868,39 +843,21 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
 
     // 获取所有活跃员工
     const activeEmployees = await connection.execute(
-      `SELECT ce.employee_id, ea.name, ea.type, ea.status as agent_status,
-        (SELECT COUNT(*) FROM company_employees WHERE employee_id = ea.id AND company_id != ? AND status = 'active') as is_market_agent
-       FROM company_employees ce
-       JOIN employee_agents ea ON ce.employee_id = ea.id
-       WHERE ce.company_id = ? AND ce.status = 'active'`,
-      [id, id]
+      `SELECT id as employee_id, name, type, status as agent_status, owner_id
+       FROM agents
+       WHERE company_id = ? AND status = 'employed'`,
+      [id]
     );
 
     // 遣散员工
     if (Array.isArray(activeEmployees[0]) && activeEmployees[0].length > 0) {
       for (const emp of activeEmployees[0]) {
-        // 更新公司员工关系状态
+        // 将员工状态改为待业，清除公司关联
         await connection.execute(
-          'UPDATE company_employees SET status = "terminated", updated_at = NOW() WHERE company_id = ? AND employee_id = ?',
-          [id, emp.employee_id]
+          'UPDATE agents SET company_id = NULL, status = "available", updated_at = NOW() WHERE id = ?',
+          [emp.employee_id]
         );
-
-        // 判断员工来源：如果 is_market_agent > 0，说明是从市场购买的
-        if (emp.is_market_agent > 0) {
-          // 市场购买的员工：回流市场（状态改为 available）
-          await connection.execute(
-            'UPDATE employee_agents SET status = "available", updated_at = NOW() WHERE id = ?',
-            [emp.employee_id]
-          );
-          logger.info(`员工 ${emp.employee_id} (${emp.name}) 从公司 ${id} 遣散，回流市场`);
-        } else {
-          // 用户自己创建的员工：待业状态（也是 available）
-          await connection.execute(
-            'UPDATE employee_agents SET status = "available", updated_at = NOW() WHERE id = ?',
-            [emp.employee_id]
-          );
-          logger.info(`员工 ${emp.employee_id} (${emp.name}) 从公司 ${id} 遣散，进入待业状态`);
-        }
+        logger.info(`员工 ${emp.employee_id} (${emp.name}) 从公司 ${id} 遣散，状态改为待业`);
       }
     }
 
@@ -1126,8 +1083,8 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res) => {
 
     const stats = await query(
       `SELECT 
-         (SELECT COUNT(*) FROM company_employees 
-          WHERE company_id = ? AND status = 'active') as total_employees,
+         (SELECT COUNT(*) FROM agents 
+          WHERE company_id = ? AND status = 'employed') as total_employees,
          (SELECT COUNT(*) FROM games 
           WHERE company_id = ?) as total_games,
          (SELECT COUNT(*) FROM games 
