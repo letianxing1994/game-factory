@@ -651,7 +651,7 @@ router.post('/:id/assign', authenticate, async (req: AuthRequest, res) => {
 
     // 检查员工所有权和状态
     const [agentRows] = await connection.execute<any[]>(
-      'SELECT * FROM agents WHERE id = ? AND owner_id = ? AND status = "available"',
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
       [id, userId]
     );
 
@@ -659,7 +659,18 @@ router.post('/:id/assign', authenticate, async (req: AuthRequest, res) => {
       await connection.rollback();
       return res.status(404).json({ 
         success: false, 
-        message: '员工不存在、无权分配或已在公司任职' 
+        message: '员工不存在或无权分配' 
+      });
+    }
+
+    const agent = agentRows[0];
+
+    // 检查员工是否已被雇佣
+    if (agent.status === 'employed' && agent.company_id) {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: '该员工已在其他公司任职' 
       });
     }
 

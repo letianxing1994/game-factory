@@ -1185,7 +1185,9 @@ const Agents: React.FC = () => {
       >
         {agentToAssign && (
           <div>
-            <p>将员工「<strong>{agentToAssign.name}</strong>」分配到哪个公司？</p>
+            <p style={{ color: '#d4c5a9' }}>
+              将员工「<strong style={{ color: '#d4af37' }}>{agentToAssign.name}</strong>」分配到哪个公司？
+            </p>
             <Select
               placeholder="选择公司"
               style={{ width: '100%', marginTop: '12px' }}

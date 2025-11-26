@@ -26,7 +26,35 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider 
+        locale={zhCN}
+        theme={{
+          token: {
+            colorBgElevated: 'rgba(40, 25, 15, 0.95)',
+            colorText: '#e8dcc4',
+            colorTextHeading: '#d4af37',
+            colorSuccess: '#52c41a',
+            colorError: '#ff4d4f',
+            colorWarning: '#faad14',
+            colorInfo: '#1890ff',
+            colorSuccessBg: 'rgba(82, 196, 26, 0.2)',
+            colorErrorBg: 'rgba(255, 77, 79, 0.2)',
+            colorWarningBg: 'rgba(250, 173, 20, 0.2)',
+            colorInfoBg: 'rgba(24, 144, 255, 0.2)',
+          },
+          components: {
+            Message: {
+              contentBg: 'rgba(40, 25, 15, 0.95)',
+              contentPadding: '10px 16px',
+              colorText: '#e8dcc4',
+              colorSuccess: '#52c41a',
+              colorError: '#ff7875',
+              colorWarning: '#ffc53d',
+              colorInfo: '#40a9ff',
+            },
+          },
+        }}
+      >
         <AuthProvider>
           <Router>
             <Routes>

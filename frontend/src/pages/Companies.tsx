@@ -135,21 +135,22 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
     try {
       // 获取自己的自由员工
       const myAgentsRes = await apiClient.get<{ success: boolean; data: any[] }>('/agents/my?status=available')
+      const myAgents = (myAgentsRes.data || []).map((a: any) => ({ ...a, source: 'own' }))
       
-      // 获取市场上的员工 - 先尝试获取，如果失败就跳过
+      // 获取市场上的员工 - 静默失败，不影响主功能
       let marketAgents: any[] = []
       try {
         const marketRes = await apiClient.get<{ success: boolean; data: any[] }>('/market/listings?type=agent')
         marketAgents = (marketRes.data || []).map((a: any) => ({ ...a, source: 'market' }))
       } catch (marketError) {
-        console.warn('获取市场员工失败，继续显示自己的员工', marketError)
+        // 静默处理市场获取失败，不显示错误消息
+        console.log('市场功能暂不可用')
       }
-      
-      const myAgents = (myAgentsRes.data || []).map((a: any) => ({ ...a, source: 'own' }))
       
       setAvailableAgents([...myAgents, ...marketAgents])
     } catch (error: any) {
-      message.error(error?.response?.data?.message || '加载可招募员工失败')
+      // 只有获取自己的员工失败时才显示错误
+      message.error(error?.response?.data?.message || '加载员工列表失败')
       setAvailableAgents([])
     } finally {
       setRecruitLoading(false)
@@ -205,6 +206,98 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
     }
   }
 
+  const employeeColumns = [
+    { title: '姓名', dataIndex: 'name', width: 120 },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      width: 100,
+      render: (value: string, record: any) => {
+        const typeColorMap: Record<string, string> = {
+          planner: 'rgba(64, 169, 255, 0.3)',
+          architect: 'rgba(19, 194, 194, 0.3)',
+          artist: 'rgba(235, 47, 150, 0.3)',
+          developer: 'rgba(82, 196, 26, 0.3)',
+          tester: 'rgba(250, 140, 22, 0.3)',
+          operator: 'rgba(114, 46, 209, 0.3)',
+          music: 'rgba(250, 173, 20, 0.3)',
+        }
+        const borderColorMap: Record<string, string> = {
+          planner: 'rgba(64, 169, 255, 0.6)',
+          architect: 'rgba(19, 194, 194, 0.6)',
+          artist: 'rgba(235, 47, 150, 0.6)',
+          developer: 'rgba(82, 196, 26, 0.6)',
+          tester: 'rgba(250, 140, 22, 0.6)',
+          operator: 'rgba(114, 46, 209, 0.6)',
+          music: 'rgba(250, 173, 20, 0.6)',
+        }
+        const bgColor = typeColorMap[value] || 'rgba(217, 217, 217, 0.2)'
+        const borderColor = borderColorMap[value] || 'rgba(217, 217, 217, 0.5)'
+        return (
+          <span style={{ 
+            display: 'inline-block',
+            background: `linear-gradient(135deg, ${bgColor} 0%, rgba(40, 25, 15, 0.4) 100%)`,
+            color: '#d4af37',
+            border: `1px solid ${borderColor}`,
+            fontWeight: 600,
+            padding: '0 7px',
+            fontSize: '12px',
+            lineHeight: '20px',
+            borderRadius: '3px',
+            whiteSpace: 'nowrap',
+            boxShadow: 'inset 0 1px 0 rgba(255, 200, 120, 0.15), 0 2px 4px rgba(0, 0, 0, 0.4)',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(4px)'
+          }}>{value}</span>
+        )
+      },
+    },
+    {
+      title: '专业',
+      dataIndex: 'specialization',
+      width: 120,
+      render: (value: string) => value || '--',
+    },
+    {
+      title: 'AI模型',
+      dataIndex: 'ai_model',
+      render: (model: string, record: any) => {
+        const getModelColor = (modelName: string): { bg: string; border: string } => {
+          if (!modelName || modelName === '默认模型') {
+            return { bg: 'rgba(217, 217, 217, 0.2)', border: 'rgba(217, 217, 217, 0.5)' }
+          }
+          const lowerModel = modelName.toLowerCase()
+          if (lowerModel.includes('gpt-5')) return { bg: 'rgba(235, 47, 150, 0.3)', border: 'rgba(235, 47, 150, 0.6)' }
+          if (lowerModel.includes('gpt-4o')) return { bg: 'rgba(114, 46, 209, 0.3)', border: 'rgba(114, 46, 209, 0.6)' }
+          if (lowerModel.includes('gpt')) return { bg: 'rgba(47, 84, 235, 0.3)', border: 'rgba(47, 84, 235, 0.6)' }
+          if (lowerModel.includes('claude')) return { bg: 'rgba(19, 194, 194, 0.3)', border: 'rgba(19, 194, 194, 0.6)' }
+          if (lowerModel.includes('deepseek')) return { bg: 'rgba(24, 144, 255, 0.3)', border: 'rgba(24, 144, 255, 0.6)' }
+          return { bg: 'rgba(47, 84, 235, 0.3)', border: 'rgba(47, 84, 235, 0.6)' }
+        }
+        
+        const displayModel = record.ai_model || model || '默认模型'
+        const colors = getModelColor(displayModel)
+        return (
+          <span style={{
+            display: 'inline-block',
+            background: `linear-gradient(135deg, ${colors.bg} 0%, rgba(40, 25, 15, 0.4) 100%)`,
+            color: '#d4af37',
+            border: `1px solid ${colors.border}`,
+            fontWeight: 600,
+            padding: '0 7px',
+            fontSize: '12px',
+            lineHeight: '20px',
+            borderRadius: '3px',
+            whiteSpace: 'nowrap',
+            boxShadow: 'inset 0 1px 0 rgba(255, 200, 120, 0.15), 0 2px 4px rgba(0, 0, 0, 0.4)',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(4px)'
+          }}>{displayModel}</span>
+        )
+      },
+    },
+  ]
+
   if (embedded) {
     return (
       <>
@@ -225,16 +318,12 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
               showIcon
             />
           ) : (
-            <List
+            <Table
+              size="small"
               dataSource={employees}
-              renderItem={(emp: any) => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={emp.name}
-                    description={`${emp.type} · ${emp.specialization}`}
-                  />
-                </List.Item>
-              )}
+              columns={employeeColumns}
+              pagination={false}
+              rowKey="id"
             />
           )}
         </Card>
@@ -244,7 +333,7 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
           open={recruitModalVisible}
           onCancel={() => setRecruitModalVisible(false)}
           footer={null}
-          width={720}
+          width={900}
           centered
         >
           <Tabs>
@@ -252,22 +341,23 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
               {recruitLoading ? (
                 <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
               ) : (
-                <List
+                <Table
+                  size="small"
                   dataSource={availableAgents.filter((a: any) => a.source === 'own')}
-                  renderItem={(agent: any) => (
-                    <List.Item
-                      actions={[
-                        <Button type="primary" onClick={() => handleRecruit(agent)}>
+                  columns={[
+                    ...employeeColumns,
+                    {
+                      title: '操作',
+                      width: 80,
+                      render: (_: any, agent: any) => (
+                        <Button type="primary" size="small" onClick={() => handleRecruit(agent)}>
                           招募
                         </Button>
-                      ]}
-                    >
-                      <List.Item.Meta
-                        title={agent.name}
-                        description={`${agent.type} · ${agent.specialization || '暂无'}`}
-                      />
-                    </List.Item>
-                  )}
+                      ),
+                    },
+                  ]}
+                  pagination={false}
+                  rowKey="id"
                   locale={{ emptyText: '暂无可招募的自由员工' }}
                 />
               )}
@@ -276,25 +366,31 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
               {recruitLoading ? (
                 <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
               ) : (
-                <List
+                <Table
+                  size="small"
                   dataSource={availableAgents.filter((a: any) => a.source === 'market')}
-                  renderItem={(agent: any) => (
-                    <List.Item
-                      actions={[
-                        <Space>
-                          <Typography.Text strong style={{ color: '#faad14' }}>{agent.price || 0} 币</Typography.Text>
-                          <Button type="primary" onClick={() => handleRecruit(agent)}>
-                            购买
-                          </Button>
-                        </Space>
-                      ]}
-                    >
-                      <List.Item.Meta
-                        title={agent.name || agent.agent_name}
-                        description={`${agent.type || agent.agent_type} · ${agent.specialization || '暂无'}`}
-                      />
-                    </List.Item>
-                  )}
+                  columns={[
+                    ...employeeColumns,
+                    {
+                      title: '售价',
+                      dataIndex: 'price',
+                      width: 80,
+                      render: (price: number) => (
+                        <Typography.Text strong style={{ color: '#faad14' }}>{price || 0} 币</Typography.Text>
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      width: 80,
+                      render: (_: any, agent: any) => (
+                        <Button type="primary" size="small" onClick={() => handleRecruit(agent)}>
+                          购买
+                        </Button>
+                      ),
+                    },
+                  ]}
+                  pagination={false}
+                  rowKey={(record) => record.id || record.listing_id}
                   locale={{ emptyText: '市场暂无可招募员工' }}
                 />
               )}
@@ -324,16 +420,12 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
             showIcon
           />
         ) : (
-          <List
+          <Table
+            size="small"
             dataSource={employees}
-            renderItem={(emp: any) => (
-              <List.Item>
-                <List.Item.Meta
-                  title={emp.name}
-                  description={`${emp.type} · ${emp.specialization}`}
-                />
-              </List.Item>
-            )}
+            columns={employeeColumns}
+            pagination={false}
+            rowKey="id"
           />
         )}
       </Card>
@@ -343,7 +435,7 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
         open={recruitModalVisible}
         onCancel={() => setRecruitModalVisible(false)}
         footer={null}
-        width={720}
+        width={900}
         centered
       >
         <Tabs>
@@ -351,22 +443,23 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
             {recruitLoading ? (
               <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
             ) : (
-              <List
+              <Table
+                size="small"
                 dataSource={availableAgents.filter((a: any) => a.source === 'own')}
-                renderItem={(agent: any) => (
-                  <List.Item
-                    actions={[
-                      <Button type="primary" onClick={() => handleRecruit(agent)}>
+                columns={[
+                  ...employeeColumns,
+                  {
+                    title: '操作',
+                    width: 80,
+                    render: (_: any, agent: any) => (
+                      <Button type="primary" size="small" onClick={() => handleRecruit(agent)}>
                         招募
                       </Button>
-                    ]}
-                  >
-                    <List.Item.Meta
-                      title={agent.name}
-                      description={`${agent.type} · ${agent.specialization || '暂无'}`}
-                    />
-                  </List.Item>
-                )}
+                    ),
+                  },
+                ]}
+                pagination={false}
+                rowKey="id"
                 locale={{ emptyText: '暂无可招募的自由员工' }}
               />
             )}
@@ -375,25 +468,31 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
             {recruitLoading ? (
               <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
             ) : (
-              <List
+              <Table
+                size="small"
                 dataSource={availableAgents.filter((a: any) => a.source === 'market')}
-                renderItem={(agent: any) => (
-                  <List.Item
-                    actions={[
-                      <Space>
-                        <Typography.Text strong style={{ color: '#faad14' }}>{agent.price || 0} 币</Typography.Text>
-                        <Button type="primary" onClick={() => handleRecruit(agent)}>
-                          购买
-                        </Button>
-                      </Space>
-                    ]}
-                  >
-                    <List.Item.Meta
-                      title={agent.name || agent.agent_name}
-                      description={`${agent.type || agent.agent_type} · ${agent.specialization || '暂无'}`}
-                    />
-                  </List.Item>
-                )}
+                columns={[
+                  ...employeeColumns,
+                  {
+                    title: '售价',
+                    dataIndex: 'price',
+                    width: 80,
+                    render: (price: number) => (
+                      <Typography.Text strong style={{ color: '#faad14' }}>{price || 0} 币</Typography.Text>
+                    ),
+                  },
+                  {
+                    title: '操作',
+                    width: 80,
+                    render: (_: any, agent: any) => (
+                      <Button type="primary" size="small" onClick={() => handleRecruit(agent)}>
+                        购买
+                      </Button>
+                    ),
+                  },
+                ]}
+                pagination={false}
+                rowKey={(record) => record.id || record.listing_id}
                 locale={{ emptyText: '市场暂无可招募员工' }}
               />
             )}
