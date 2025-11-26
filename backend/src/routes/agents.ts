@@ -630,6 +630,100 @@ router.post('/:id/fire', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 将员工分配到公司
+router.post('/:id/assign', authenticate, async (req: AuthRequest, res) => {
+  const connection = await getConnection();
+  
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { company_id } = req.body;
+
+    if (!company_id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: '请指定目标公司' 
+      });
+    }
+
+    // 开始事务
+    await connection.beginTransaction();
+
+    // 检查员工所有权和状态
+    const [agentRows] = await connection.execute<any[]>(
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ? AND status = "available"',
+      [id, userId]
+    );
+
+    if (agentRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: '员工不存在、无权分配或已在公司任职' 
+      });
+    }
+
+    // 检查公司所有权和状态
+    const [companyRows] = await connection.execute<any[]>(
+      'SELECT * FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+      [company_id, userId]
+    );
+
+    if (companyRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: '公司不存在或无权操作' 
+      });
+    }
+
+    const company = companyRows[0];
+
+    // 检查公司员工人数限制
+    const [countRows] = await connection.execute<any[]>(
+      'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
+      [company_id]
+    );
+
+    const currentCount = countRows[0].count;
+    if (currentCount >= company.max_employees) {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: `公司「${company.name}」已达到员工上限（${company.max_employees}人）` 
+      });
+    }
+
+    // 更新员工的公司和状态
+    await connection.execute(
+      'UPDATE agents SET company_id = ?, status = "employed", updated_at = NOW() WHERE id = ?',
+      [company_id, id]
+    );
+
+    // 清除相关缓存
+    await redisClient.del(`user:${userId}:agents`);
+    await redisClient.del(`company:${company_id}:agents`);
+    await redisClient.del(`user:${userId}:companies`);
+
+    await connection.commit();
+
+    res.json({ 
+      success: true, 
+      message: `已将员工分配到公司「${company.name}」` 
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    logger.error('分配员工到公司失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '分配员工失败' 
+    });
+  } finally {
+    connection.release();
+  }
+});
+
 // 将员工Agent放到市场出售
 router.post('/:id/sell', authenticate, async (req: AuthRequest, res) => {
   const connection = await getConnection();

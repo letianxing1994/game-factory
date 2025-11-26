@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  Carousel,
   Col,
   Divider,
   Form,
@@ -21,6 +22,7 @@ import {
   Typography,
   message,
 } from 'antd'
+import { LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { apiClient } from '../services/api'
 import type {
   ClarificationState,
@@ -110,6 +112,9 @@ const buildPlanningFocus = (values: WorkflowFormValues) => {
 const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }> = ({ companyId, embedded }) => {
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [recruitModalVisible, setRecruitModalVisible] = useState(false)
+  const [availableAgents, setAvailableAgents] = useState<any[]>([])
+  const [recruitLoading, setRecruitLoading] = useState(false)
 
   useEffect(() => {
     if (!companyId) {
@@ -125,13 +130,189 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
       .finally(() => setLoading(false))
   }, [companyId])
 
+  const loadAvailableAgents = async () => {
+    setRecruitLoading(true)
+    try {
+      // 获取自己的自由员工
+      const myAgentsRes = await apiClient.get<{ success: boolean; data: any[] }>('/agents/my?status=available')
+      // 获取市场上的员工
+      const marketRes = await apiClient.get<{ success: boolean; data: any[] }>('/market/listings?type=agent')
+      
+      const myAgents = (myAgentsRes.data || []).map((a: any) => ({ ...a, source: 'own' }))
+      const marketAgents = (marketRes.data || []).map((a: any) => ({ ...a, source: 'market' }))
+      
+      setAvailableAgents([...myAgents, ...marketAgents])
+    } catch (error) {
+      message.error('加载可招募员工失败')
+      setAvailableAgents([])
+    } finally {
+      setRecruitLoading(false)
+    }
+  }
+
+  const handleOpenRecruitModal = () => {
+    setRecruitModalVisible(true)
+    loadAvailableAgents()
+  }
+
+  const handleRecruit = async (agent: any) => {
+    if (!companyId) return
+    
+    try {
+      if (agent.source === 'own') {
+        // 分配自己的员工
+        const res = await apiClient.post<{ success: boolean; message: string }>(
+          `/agents/${agent.id}/assign`,
+          { company_id: companyId }
+        )
+        if (res.success) {
+          message.success(res.message || '招募成功')
+          setRecruitModalVisible(false)
+          // 刷新员工列表
+          setLoading(true)
+          apiClient.get<{ success: boolean; data: any[] }>(`/companies/${companyId}/employees`)
+            .then((res) => setEmployees(res.data || []))
+            .finally(() => setLoading(false))
+        } else {
+          message.error(res.message || '招募失败')
+        }
+      } else {
+        // 从市场购买员工
+        const res = await apiClient.post<{ success: boolean; message: string }>(
+          `/market/listings/${agent.listing_id || agent.id}/buy`,
+          { company_id: companyId }
+        )
+        if (res.success) {
+          message.success('购买并招募成功')
+          setRecruitModalVisible(false)
+          // 刷新员工列表
+          setLoading(true)
+          apiClient.get<{ success: boolean; data: any[] }>(`/companies/${companyId}/employees`)
+            .then((res) => setEmployees(res.data || []))
+            .finally(() => setLoading(false))
+        } else {
+          message.error(res.message || '购买失败')
+        }
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '操作失败')
+    }
+  }
+
   if (embedded) {
     return (
-      <Card title="公司员工" loading={loading}>
+      <>
+        <Card 
+          title="公司员工" 
+          loading={loading}
+          extra={
+            <Button type="primary" size="small" onClick={handleOpenRecruitModal}>
+              ➕ 招募员工
+            </Button>
+          }
+        >
+          {employees.length === 0 ? (
+            <Alert
+              message="暂无员工"
+              description="点击右上角「招募员工」按钮招募"
+              type="warning"
+              showIcon
+            />
+          ) : (
+            <List
+              dataSource={employees}
+              renderItem={(emp: any) => (
+                <List.Item>
+                  <List.Item.Meta
+                    title={emp.name}
+                    description={`${emp.type} · ${emp.specialization}`}
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
+
+        <Modal
+          title="招募员工"
+          open={recruitModalVisible}
+          onCancel={() => setRecruitModalVisible(false)}
+          footer={null}
+          width={720}
+        >
+          <Tabs>
+            <Tabs.TabPane tab="我的自由员工" key="own">
+              {recruitLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+              ) : (
+                <List
+                  dataSource={availableAgents.filter((a: any) => a.source === 'own')}
+                  renderItem={(agent: any) => (
+                    <List.Item
+                      actions={[
+                        <Button type="primary" onClick={() => handleRecruit(agent)}>
+                          招募
+                        </Button>
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={agent.name}
+                        description={`${agent.type} · ${agent.specialization || '暂无'}`}
+                      />
+                    </List.Item>
+                  )}
+                  locale={{ emptyText: '暂无可招募的自由员工' }}
+                />
+              )}
+            </Tabs.TabPane>
+            <Tabs.TabPane tab="市场员工" key="market">
+              {recruitLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+              ) : (
+                <List
+                  dataSource={availableAgents.filter((a: any) => a.source === 'market')}
+                  renderItem={(agent: any) => (
+                    <List.Item
+                      actions={[
+                        <Space>
+                          <Typography.Text strong style={{ color: '#faad14' }}>{agent.price || 0} 币</Typography.Text>
+                          <Button type="primary" onClick={() => handleRecruit(agent)}>
+                            购买
+                          </Button>
+                        </Space>
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={agent.name || agent.agent_name}
+                        description={`${agent.type || agent.agent_type} · ${agent.specialization || '暂无'}`}
+                      />
+                    </List.Item>
+                  )}
+                  locale={{ emptyText: '市场暂无可招募员工' }}
+                />
+              )}
+            </Tabs.TabPane>
+          </Tabs>
+        </Modal>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <Card 
+        title="公司员工" 
+        loading={loading}
+        extra={
+          <Button type="primary" size="small" onClick={handleOpenRecruitModal}>
+            ➕ 招募员工
+          </Button>
+        }
+      >
         {employees.length === 0 ? (
           <Alert
             message="暂无员工"
-            description="请前往员工市场招聘"
+            description="点击右上角「招募员工」按钮招募"
             type="warning"
             showIcon
           />
@@ -149,32 +330,69 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
           />
         )}
       </Card>
-    )
-  }
 
-  return (
-    <Card title="公司员工" loading={loading}>
-      {employees.length === 0 ? (
-        <Alert
-          message="暂无员工"
-          description="请前往员工市场招聘"
-          type="warning"
-          showIcon
-        />
-      ) : (
-        <List
-          dataSource={employees}
-          renderItem={(emp: any) => (
-            <List.Item>
-              <List.Item.Meta
-                title={emp.name}
-                description={`${emp.type} · ${emp.specialization}`}
+      <Modal
+        title="招募员工"
+        open={recruitModalVisible}
+        onCancel={() => setRecruitModalVisible(false)}
+        footer={null}
+        width={720}
+      >
+        <Tabs>
+          <Tabs.TabPane tab="我的自由员工" key="own">
+            {recruitLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+            ) : (
+              <List
+                dataSource={availableAgents.filter((a: any) => a.source === 'own')}
+                renderItem={(agent: any) => (
+                  <List.Item
+                    actions={[
+                      <Button type="primary" onClick={() => handleRecruit(agent)}>
+                        招募
+                      </Button>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={agent.name}
+                      description={`${agent.type} · ${agent.specialization || '暂无'}`}
+                    />
+                  </List.Item>
+                )}
+                locale={{ emptyText: '暂无可招募的自由员工' }}
               />
-            </List.Item>
-          )}
-        />
-      )}
-    </Card>
+            )}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="市场员工" key="market">
+            {recruitLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+            ) : (
+              <List
+                dataSource={availableAgents.filter((a: any) => a.source === 'market')}
+                renderItem={(agent: any) => (
+                  <List.Item
+                    actions={[
+                      <Space>
+                        <Typography.Text strong style={{ color: '#faad14' }}>{agent.price || 0} 币</Typography.Text>
+                        <Button type="primary" onClick={() => handleRecruit(agent)}>
+                          购买
+                        </Button>
+                      </Space>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={agent.name || agent.agent_name}
+                      description={`${agent.type || agent.agent_type} · ${agent.specialization || '暂无'}`}
+                    />
+                  </List.Item>
+                )}
+                locale={{ emptyText: '市场暂无可招募员工' }}
+              />
+            )}
+          </Tabs.TabPane>
+        </Tabs>
+      </Modal>
+    </>
   )
 }
 
@@ -231,14 +449,13 @@ const Companies: React.FC = () => {
     const [loadingQueue, setLoadingQueue] = useState(false)
 
     const clarStreamController = useRef<AbortController | null>(null)
+    const carouselRef = useRef<any>(null)
     const [clarification, setClarification] = useState<ClarificationState | null>(null)
     const [clarificationModal, setClarificationModal] = useState<ClarificationModalState>({ visible: false, executionId: '', jobId: '' })
     const [clarResponses, setClarResponses] = useState<Record<string, string>>({})
     const [clarLoading, setClarLoading] = useState(false)
 
     const [controlModal, setControlModal] = useState<StageControlState>({ visible: false, action: 'pause', stageId: '', executionId: '', jobId: '' })
-
-    const [employees, setEmployees] = useState<any[]>([])
 
     // 公司列表（react-query）
     const { data: companiesRes, refetch: refetchCompanies } = useQuery(['companies'], async () => apiClient.get<{ success: boolean; data: Company[] }>('/companies'))
@@ -260,6 +477,20 @@ const Companies: React.FC = () => {
     }, [historyQuery])
 
     const selectedCompany = useMemo(() => companiesRes?.data?.find((c: Company) => c.id === selectedCompanyId), [companiesRes, selectedCompanyId])
+
+    // 自动选择第一个公司
+    useEffect(() => {
+      if (companiesRes?.data && companiesRes.data.length > 0 && !selectedCompanyId) {
+        setSelectedCompanyId(companiesRes.data[0].id)
+      }
+    }, [companiesRes?.data, selectedCompanyId])
+
+    // 轮播切换时更新选中的公司
+    const handleCarouselChange = useCallback((current: number) => {
+      if (companiesRes?.data && companiesRes.data[current]) {
+        setSelectedCompanyId(companiesRes.data[current].id)
+      }
+    }, [companiesRes?.data])
 
     const [historyModalVisible, setHistoryModalVisible] = useState(false)
 
@@ -284,11 +515,6 @@ const Companies: React.FC = () => {
         setLoadingQueue(false)
       }
     }, [selectedCompanyId])
-
-    const openHistoryModal = useCallback(() => {
-      setHistoryModalVisible(true)
-      refetchHistory()
-    }, [refetchHistory])
 
     const closeHistoryModal = useCallback(() => {
       setHistoryModalVisible(false)
@@ -535,8 +761,11 @@ const Companies: React.FC = () => {
         message.success('公司创建成功')
         setCreateCompanyModalVisible(false)
         companyForm.resetFields()
-        // 刷新公司列表
-        refetchCompanies?.()
+        // 刷新公司列表并自动选择新公司
+        await refetchCompanies?.()
+        if (res.data?.id) {
+          setSelectedCompanyId(res.data.id)
+        }
       }
     } catch (error: any) {
       message.error(error?.response?.data?.message || '创建公司失败')
@@ -808,15 +1037,6 @@ const Companies: React.FC = () => {
     }
   }
 
-  const companyOptions = useMemo(
-    () =>
-      companiesRes?.data?.map((company: Company) => ({
-        label: company.name,
-        value: company.id,
-      })) || [],
-    [companiesRes]
-  )
-
   const jobList = useMemo(() => {
     return Object.values(jobs).sort((a, b) => {
       const aTime = new Date(a.createdAt || a.updatedAt || '').getTime()
@@ -864,17 +1084,48 @@ const Companies: React.FC = () => {
           }}>
             📚 已解散公司
           </Button>
-          <Select
-            value={selectedCompanyId}
-            options={companyOptions}
-            onChange={setSelectedCompanyId}
-            placeholder="🏛️ 选择公司"
-            style={{ minWidth: 220 }}
-            size="large"
-            className="company-select"
-          />
+          {companiesRes?.data && companiesRes.data.length > 1 && (
+            <Space.Compact size="large">
+              <Button
+                icon={<LeftOutlined />}
+                onClick={() => carouselRef.current?.prev()}
+                disabled={!selectedCompanyId}
+              >
+                上一个
+              </Button>
+              <Button
+                style={{ minWidth: 220 }}
+                disabled
+              >
+                🏛️ {selectedCompany?.name || '选择公司'}
+              </Button>
+              <Button
+                icon={<RightOutlined />}
+                onClick={() => carouselRef.current?.next()}
+                disabled={!selectedCompanyId}
+              >
+                下一个
+              </Button>
+            </Space.Compact>
+          )}
+          {companiesRes?.data && companiesRes.data.length === 1 && (
+            <Button size="large" disabled style={{ minWidth: 220 }}>
+              🏛️ {selectedCompany?.name || '当前公司'}
+            </Button>
+          )}
         </Space>
       </div>
+
+      {/* 隐藏的轮播控制器 */}
+      {companiesRes?.data && companiesRes.data.length > 0 && (
+        <div style={{ display: 'none' }}>
+          <Carousel ref={carouselRef} afterChange={handleCarouselChange}>
+            {companiesRes.data.map((company: Company) => (
+              <div key={company.id}></div>
+            ))}
+          </Carousel>
+        </div>
+      )}
 
       <Row gutter={16}>
         <Col xs={24} lg={4}>

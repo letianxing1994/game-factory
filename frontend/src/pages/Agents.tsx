@@ -602,6 +602,63 @@ const Agents: React.FC = () => {
           >
             试运行
           </Button>
+          {!record.company_id && (
+            <Button
+              type="link"
+              onClick={() => {
+                if (myCompanies.length === 0) {
+                  message.warning('请先创建公司')
+                  return
+                }
+                Modal.confirm({
+                  title: '分配到公司',
+                  content: (
+                    <div>
+                      <p>将员工「{record.name}」分配到哪个公司？</p>
+                      <Select
+                        placeholder="选择公司"
+                        style={{ width: '100%', marginTop: '12px' }}
+                        id="assign-company-select"
+                        options={myCompanies.map((c: any) => ({
+                          label: c.name,
+                          value: c.id,
+                        }))}
+                      />
+                    </div>
+                  ),
+                  okText: '分配',
+                  cancelText: '取消',
+                  onOk: async () => {
+                    const selectElem = document.getElementById('assign-company-select') as any
+                    const companyId = selectElem?.value
+                    
+                    if (!companyId) {
+                      message.error('请选择公司')
+                      return Promise.reject()
+                    }
+                    
+                    try {
+                      const res = await apiClient.post<{ success: boolean; message: string }>(
+                        `/agents/${record.id}/assign`,
+                        { company_id: companyId }
+                      )
+                      if (res.success) {
+                        message.success('分配成功')
+                        refetch()
+                      } else {
+                        message.error(res.message || '分配失败')
+                      }
+                    } catch (error: any) {
+                      message.error(error?.response?.data?.message || '分配失败')
+                      return Promise.reject()
+                    }
+                  },
+                })
+              }}
+            >
+              分配
+            </Button>
+          )}
           <Button
             type="link"
             onClick={() => {
