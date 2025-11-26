@@ -61,6 +61,63 @@ function safeJSONParse(jsonString: string): any {
   }
 }
 
+// 获取用户的公司列表 (同 /my 接口)
+router.get('/', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const cacheKey = `user:${userId}:companies`;
+
+    // 尝试从缓存获取
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      return res.json({
+        success: true,
+        data: JSON.parse(cachedData)
+      });
+    }
+
+    const companies = await query<any[]>(
+      `SELECT c.*, 
+        (SELECT COUNT(*) FROM agents 
+         WHERE company_id = c.id AND status = 'employed') as current_employees
+       FROM companies c 
+       WHERE c.owner_id = ? AND c.status = 'active'
+       ORDER BY c.created_at DESC`,
+      [userId]
+    );
+
+    const formatted = companies.map(company => ({
+      ...company,
+      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null,
+      initialCapital: company.initial_capital,
+      currentCapital: company.current_capital,
+      workflowType: company.workflow_type,
+      maxEmployees: company.max_employees,
+      companySize: company.company_size,
+      logoUrl: company.logo_url,
+      ownerId: company.owner_id,
+      createdAt: company.created_at,
+      updatedAt: company.updated_at,
+      currentEmployees: company.current_employees
+    }));
+
+    // 缓存数据
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(formatted)); // 5分钟缓存
+
+    res.json({
+      success: true,
+      data: formatted
+    });
+
+  } catch (error) {
+    logger.error('获取用户公司列表失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : '获取公司列表失败'
+    });
+  }
+});
+
 // 创建公司
 router.post('/', authenticate, validateCompanyCreation, async (req: AuthRequest, res) => {
   const connection = await getConnection();
@@ -615,7 +672,17 @@ router.get('/my', authenticate, async (req: AuthRequest, res) => {
 
     const formatted = companies.map(company => ({
       ...company,
-      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null
+      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null,
+      initialCapital: company.initial_capital,
+      currentCapital: company.current_capital,
+      workflowType: company.workflow_type,
+      maxEmployees: company.max_employees,
+      companySize: company.company_size,
+      logoUrl: company.logo_url,
+      ownerId: company.owner_id,
+      createdAt: company.created_at,
+      updatedAt: company.updated_at,
+      currentEmployees: company.current_employees
     }));
 
     // 缓存数据
@@ -661,7 +728,17 @@ router.get('/history', authenticate, async (req: AuthRequest, res) => {
 
     const formatted = companies.map(company => ({
       ...company,
-      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null
+      workflow_config: company.workflow_config ? JSON.parse(company.workflow_config) : null,
+      initialCapital: company.initial_capital,
+      currentCapital: company.current_capital,
+      workflowType: company.workflow_type,
+      maxEmployees: company.max_employees,
+      companySize: company.company_size,
+      logoUrl: company.logo_url,
+      ownerId: company.owner_id,
+      createdAt: company.created_at,
+      updatedAt: company.updated_at,
+      totalEmployees: company.total_employees
     }));
 
     // 缓存数据
@@ -725,7 +802,17 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 
     const company = {
       ...companies[0],
-      workflow_config: companies[0].workflow_config ? JSON.parse(companies[0].workflow_config) : null
+      workflow_config: companies[0].workflow_config ? JSON.parse(companies[0].workflow_config) : null,
+      initialCapital: companies[0].initial_capital,
+      currentCapital: companies[0].current_capital,
+      workflowType: companies[0].workflow_type,
+      maxEmployees: companies[0].max_employees,
+      companySize: companies[0].company_size,
+      logoUrl: companies[0].logo_url,
+      ownerId: companies[0].owner_id,
+      createdAt: companies[0].created_at,
+      updatedAt: companies[0].updated_at,
+      currentEmployees: companies[0].current_employees
     };
 
     // 缓存数据
