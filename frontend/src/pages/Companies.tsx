@@ -135,15 +135,21 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
     try {
       // 获取自己的自由员工
       const myAgentsRes = await apiClient.get<{ success: boolean; data: any[] }>('/agents/my?status=available')
-      // 获取市场上的员工
-      const marketRes = await apiClient.get<{ success: boolean; data: any[] }>('/market/listings?type=agent')
+      
+      // 获取市场上的员工 - 先尝试获取，如果失败就跳过
+      let marketAgents: any[] = []
+      try {
+        const marketRes = await apiClient.get<{ success: boolean; data: any[] }>('/market/listings?type=agent')
+        marketAgents = (marketRes.data || []).map((a: any) => ({ ...a, source: 'market' }))
+      } catch (marketError) {
+        console.warn('获取市场员工失败，继续显示自己的员工', marketError)
+      }
       
       const myAgents = (myAgentsRes.data || []).map((a: any) => ({ ...a, source: 'own' }))
-      const marketAgents = (marketRes.data || []).map((a: any) => ({ ...a, source: 'market' }))
       
       setAvailableAgents([...myAgents, ...marketAgents])
-    } catch (error) {
-      message.error('加载可招募员工失败')
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '加载可招募员工失败')
       setAvailableAgents([])
     } finally {
       setRecruitLoading(false)
@@ -239,6 +245,7 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
           onCancel={() => setRecruitModalVisible(false)}
           footer={null}
           width={720}
+          centered
         >
           <Tabs>
             <Tabs.TabPane tab="我的自由员工" key="own">
@@ -337,6 +344,7 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
         onCancel={() => setRecruitModalVisible(false)}
         footer={null}
         width={720}
+        centered
       >
         <Tabs>
           <Tabs.TabPane tab="我的自由员工" key="own">

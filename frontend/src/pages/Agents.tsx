@@ -206,6 +206,9 @@ const Agents: React.FC = () => {
   const [conversationalLoading, setConversationalLoading] = useState(false)
   const [conversationalModel, setConversationalModel] = useState('gpt-4o')
   const [selectedCompanyForConv, setSelectedCompanyForConv] = useState<number>()
+  const [assignModalVisible, setAssignModalVisible] = useState(false)
+  const [agentToAssign, setAgentToAssign] = useState<EmployeeAgent | null>(null)
+  const [selectedCompanyForAssign, setSelectedCompanyForAssign] = useState<number | undefined>(undefined)
 
   const { data: agentsRes, refetch } = useQuery(
     ['agents', 'mine'],
@@ -610,50 +613,9 @@ const Agents: React.FC = () => {
                   message.warning('请先创建公司')
                   return
                 }
-                Modal.confirm({
-                  title: '分配到公司',
-                  content: (
-                    <div>
-                      <p>将员工「{record.name}」分配到哪个公司？</p>
-                      <Select
-                        placeholder="选择公司"
-                        style={{ width: '100%', marginTop: '12px' }}
-                        id="assign-company-select"
-                        options={myCompanies.map((c: any) => ({
-                          label: c.name,
-                          value: c.id,
-                        }))}
-                      />
-                    </div>
-                  ),
-                  okText: '分配',
-                  cancelText: '取消',
-                  onOk: async () => {
-                    const selectElem = document.getElementById('assign-company-select') as any
-                    const companyId = selectElem?.value
-                    
-                    if (!companyId) {
-                      message.error('请选择公司')
-                      return Promise.reject()
-                    }
-                    
-                    try {
-                      const res = await apiClient.post<{ success: boolean; message: string }>(
-                        `/agents/${record.id}/assign`,
-                        { company_id: companyId }
-                      )
-                      if (res.success) {
-                        message.success('分配成功')
-                        refetch()
-                      } else {
-                        message.error(res.message || '分配失败')
-                      }
-                    } catch (error: any) {
-                      message.error(error?.response?.data?.message || '分配失败')
-                      return Promise.reject()
-                    }
-                  },
-                })
+                setAgentToAssign(record)
+                setSelectedCompanyForAssign(undefined)
+                setAssignModalVisible(true)
               }}
             >
               分配
@@ -1182,6 +1144,60 @@ const Agents: React.FC = () => {
             </Space.Compact>
           </Tabs.TabPane>
         </Tabs>
+      </Modal>
+
+      {/* 分配员工到公司的Modal */}
+      <Modal
+        title="分配员工到公司"
+        open={assignModalVisible}
+        onCancel={() => {
+          setAssignModalVisible(false)
+          setAgentToAssign(null)
+          setSelectedCompanyForAssign(undefined)
+        }}
+        onOk={async () => {
+          if (!agentToAssign || !selectedCompanyForAssign) {
+            message.error('请选择公司')
+            return
+          }
+          
+          try {
+            const res = await apiClient.post<{ success: boolean; message: string }>(
+              `/agents/${agentToAssign.id}/assign`,
+              { company_id: selectedCompanyForAssign }
+            )
+            if (res.success) {
+              message.success(res.message || '分配成功')
+              setAssignModalVisible(false)
+              setAgentToAssign(null)
+              setSelectedCompanyForAssign(undefined)
+              refetch()
+            } else {
+              message.error(res.message || '分配失败')
+            }
+          } catch (error: any) {
+            message.error(error?.response?.data?.message || '分配失败')
+          }
+        }}
+        okText="确认分配"
+        cancelText="取消"
+        centered
+      >
+        {agentToAssign && (
+          <div>
+            <p>将员工「<strong>{agentToAssign.name}</strong>」分配到哪个公司？</p>
+            <Select
+              placeholder="选择公司"
+              style={{ width: '100%', marginTop: '12px' }}
+              value={selectedCompanyForAssign}
+              onChange={setSelectedCompanyForAssign}
+              options={myCompanies.map((c: any) => ({
+                label: c.name,
+                value: c.id,
+              }))}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   )
