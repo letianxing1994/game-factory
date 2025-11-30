@@ -291,3 +291,50 @@ export interface AgentPreviewResult {
     metadata?: Record<string, any>;
   }>;
 }
+
+// 预览任务类型
+export interface PreviewTask {
+  id: number;
+  task_id: string;
+  user_id: number;
+  agent_id: number;
+  agent_name?: string;
+  task_name: string;
+  game_id?: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number;
+  stage_id: string;
+  start_time?: string;
+  complete_time?: string;
+  result_data?: any;
+  error_message?: string;
+  config?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+// 创建预览任务请求
+export interface CreatePreviewTaskRequest {
+  agentId: number;
+  taskName: string;
+  gameId?: number;
+  project: {
+    projectName: string;
+    description: string;
+  };
+  cloudProvider?: 'aliyun' | 'gcp';
+  stageConfig?: {
+    model?: string;
+    mode?: string;
+  };
+  userInput?: Record<string, any>;
+}
+
+// 创建预览任务响应
+export interface CreatePreviewTaskResponse {
+  taskId: string;
+  status: string;
+  agentId: number;
+  stageId: string;
+  message: string;
+}

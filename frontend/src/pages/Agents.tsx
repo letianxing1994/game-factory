@@ -1,71 +1,34 @@
 import React, { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   Alert,
   Button,
   Card,
   Form,
-  Image,
   Input,
   Modal,
   Select,
   Space,
   Table,
   Tabs,
-  Tag,
   Typography,
   message,
 } from 'antd'
 import { apiClient } from '../services/api'
-import type { AgentPreviewResult, EmployeeAgent } from '../types'
+import { createPreviewTask } from '../services/previewTasks'
+import type { EmployeeAgent } from '../types'
 
 const { Title, Text } = Typography
 
 const agentStageMap: Record<string, string> = {
   planner: 'planning',
-  architect: 'architecture',
+  architect: 'tech',
   artist: 'art',
   developer: 'tech',
   tester: 'test',
   operator: 'planning',
   music: 'music',
-}
-
-const defaultGdd = (values: PreviewFormValues) => {
-  const now = new Date().toISOString()
-  return {
-    projectId: `preview-${Date.now()}`,
-    projectName: values.projectName,
-    coreConcept: values.projectDescription || 'Preview concept',
-    gameType: values.primaryGenre,
-    primaryGenre: values.primaryGenre,
-    subGenre: values.subGenre,
-    hybridGenres: values.hybridGenres,
-    dimension: values.dimension,
-    artStyle: values.artStyle,
-    gameMode: values.gameMode,
-    gameplayMechanics: [
-      {
-        name: '核心玩法',
-        description: values.projectDescription || '快速验证体验',
-        implementationDetails: 'Auto-generated preview mechanic',
-      },
-    ],
-    artRequirements: [
-      { type: 'character', description: '示例角色', quantity: 1, priority: 'high' },
-      { type: 'environment', description: '示例场景', quantity: 1, priority: 'medium' },
-    ],
-    audioRequirements: [
-      { type: 'bgm', description: '示例BGM', quantity: 1, priority: 'high' },
-    ],
-    technicalRequirements: {
-      engine: values.engine || 'Unity',
-      targetPlatforms: ['PC'],
-      performanceRequirements: 'Preview profile',
-    },
-    createdAt: now,
-    updatedAt: now,
-  }
 }
 
 interface PreviewFormValues {
@@ -86,37 +49,17 @@ interface PreviewFormValues {
   engine?: string
 }
 
-const imageFormats = ['png', 'jpg', 'jpeg', 'webp', 'gif']
-const audioFormats = ['mp3', 'wav', 'ogg']
-const videoFormats = ['mp4', 'webm']
-
-const ArtifactPreview: React.FC<{ artifact: NonNullable<AgentPreviewResult['artifacts']>[number] }> = ({
-  artifact,
-}) => {
-  const format = artifact.format?.toLowerCase() || ''
-  if (imageFormats.some((ext) => format.includes(ext))) {
-    return <Image src={artifact.url} alt={artifact.type} style={{ maxHeight: 200 }} />
-  }
-  if (audioFormats.some((ext) => format.includes(ext))) {
-    return <audio controls src={artifact.url} style={{ width: '100%' }} />
-  }
-  if (videoFormats.some((ext) => format.includes(ext))) {
-    return <video controls src={artifact.url} style={{ width: '100%' }} />
-  }
-  return null
-}
-
 // AI模型选项
 const aiModelOptions = {
   planner: [
-    { label: 'DeepSeek R1（默认）', value: 'deepseek-r1' },
+    { label: 'DeepSeek Reasoner（默认）', value: 'deepseek-reasoner' },
     { label: 'GPT-5', value: 'gpt-5' },
     { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
   ],
   architect: [
     { label: 'Claude Sonnet 4.5（默认）', value: 'claude-sonnet-4.5' },
     { label: 'GPT-5', value: 'gpt-5' },
-    { label: 'DeepSeek R1', value: 'deepseek-r1' },
+    { label: 'DeepSeek Reasoner', value: 'deepseek-reasoner' },
   ],
   artist2d: [
     { label: 'DALL-E-3（默认）', value: 'dall-e-3' },
@@ -191,15 +134,15 @@ const specializationOptions = {
 }
 
 const Agents: React.FC = () => {
+  const navigate = useNavigate()
   const [createForm] = Form.useForm()
-  const [previewAgent, setPreviewAgent] = useState<EmployeeAgent | null>(null)
-  const [previewResult, setPreviewResult] = useState<AgentPreviewResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<string>('')
   const [selectedDimension, setSelectedDimension] = useState<string>('')
   const [previewConfirmVisible, setPreviewConfirmVisible] = useState(false)
   const [pendingPreviewAgent, setPendingPreviewAgent] = useState<EmployeeAgent | null>(null)
+  const [taskNameInput, setTaskNameInput] = useState<string>('')
   const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
   const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
   const [conversationalInput, setConversationalInput] = useState('')
@@ -236,29 +179,48 @@ const Agents: React.FC = () => {
   }, [agentsRes])
   const myCompanies = useMemo(() => companiesRes?.data || [], [companiesRes])
 
-  // 简化版本：使用agent默认配置直接运行
-  const handlePreviewWithDefaults = async (agent: EmployeeAgent) => {
+  // 异步试运行：创建任务并导航到进度页面
+  const handlePreviewWithDefaults = async (agent: EmployeeAgent, taskName: string) => {
     const stageId = agentStageMap[agent.type] || 'planning'
     const projectName = `${agent.name}的试运行项目`
-    
+
+    // 根据agent类型设置合适的artStyle默认值
+    let defaultArtStyle = 'realistic'
+    if (agent.type === 'artist') {
+      // 如果是美术agent，使用其specialization作为artStyle
+      defaultArtStyle = agent.specialization || 'realistic'
+    } else {
+      // 非美术agent，根据常见游戏类型推断artStyle
+      const genreArtStyleMap: Record<string, string> = {
+        'rpg': 'realistic',
+        'moba': 'cartoon',
+        'slg': 'realistic',
+        'shooter': 'realistic',
+        'casual': 'cartoon',
+        'sandbox': 'pixel',
+      }
+      defaultArtStyle = genreArtStyleMap[agent.specialization || ''] || 'realistic'
+    }
+
     const defaultValues: PreviewFormValues = {
       projectName,
       projectDescription: `测试${agent.name}的工作能力`,
       primaryGenre: 'rpg',
       dimension: (agent.dimension || '3d') as '2d' | '3d',
-      artStyle: agent.specialization || 'realistic',
+      artStyle: defaultArtStyle,
       gameMode: 'singleplayer' as 'singleplayer' | 'multiplayer',
       cloudProvider: 'aliyun',
     }
 
     const payload: any = {
+      agentId: agent.id,
+      taskName: taskName || `${agent.name}的试运行`,
       project: {
         projectName: defaultValues.projectName,
         description: defaultValues.projectDescription,
       },
       cloudProvider: 'aliyun',
-      stage: {
-        stageId,
+      stageConfig: {
         mode: 'llm+kb',
       },
     }
@@ -275,24 +237,20 @@ const Agents: React.FC = () => {
         gameMode: defaultValues.gameMode,
         additionalRequirements: defaultValues.projectDescription,
       }
-    } else {
-      payload.gdd = defaultGdd(defaultValues)
     }
 
     setLoading(true)
     try {
-      const res = await apiClient.post<{
-        success: boolean
-        data: AgentPreviewResult
-      }>(`/workflows/agents/${agent.id}/preview`, payload)
+      const res = await createPreviewTask(payload)
       if (!res.success) {
-        message.error('试运行失败')
+        message.error('创建任务失败')
         return
       }
-      setPreviewResult(res.data)
-      message.success('试运行完成')
+      message.success('任务已创建，正在执行...')
+      // 导航到任务详情页面
+      navigate(`/preview-tasks/${res.data.taskId}`)
     } catch (error: any) {
-      message.error(error?.response?.data?.message || '试运行失败')
+      message.error(error?.response?.data?.message || '创建任务失败')
     } finally {
       setLoading(false)
     }
@@ -734,96 +692,58 @@ const Agents: React.FC = () => {
       {/* 试运行确认弹窗 */}
       <Modal
         open={previewConfirmVisible}
-        title="确认试运行"
+        title="创建试运行任务"
         onOk={() => {
+          if (!taskNameInput || !taskNameInput.trim()) {
+            message.warning('请输入任务名称')
+            return
+          }
           if (pendingPreviewAgent) {
-            setPreviewAgent(pendingPreviewAgent)
+            handlePreviewWithDefaults(pendingPreviewAgent, taskNameInput)
             setPreviewConfirmVisible(false)
             setPendingPreviewAgent(null)
+            setTaskNameInput('')
           }
         }}
         onCancel={() => {
           setPreviewConfirmVisible(false)
           setPendingPreviewAgent(null)
+          setTaskNameInput('')
         }}
-        okText="确认运行"
+        okText="创建任务"
         cancelText="取消"
       >
-        <Space direction="vertical">
-          <Text style={{ color: '#FFD76E' }}>即将使用默认配置试运行员工：<Text strong style={{ color: '#d4af37' }}>{pendingPreviewAgent?.name}</Text></Text>
-          <Text style={{ color: '#e8c468' }}>• 项目名称：{pendingPreviewAgent?.name}的试运行项目</Text>
-          <Text style={{ color: '#e8c468' }}>• 游戏类型：RPG</Text>
-          <Text style={{ color: '#e8c468' }}>• 执行阶段：{pendingPreviewAgent && agentStageMap[pendingPreviewAgent.type]}</Text>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <div>
+            <Text style={{ color: '#FFD76E' }}>将为员工 <Text strong style={{ color: '#d4af37' }}>{pendingPreviewAgent?.name}</Text> 创建异步试运行任务</Text>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Text strong style={{ color: '#d4af37' }}>任务名称：</Text>
+            <Input
+              placeholder="请输入任务名称，例如：测试策划Agent生成GDD"
+              value={taskNameInput}
+              onChange={(e) => setTaskNameInput(e.target.value)}
+              style={{ marginTop: 8 }}
+            />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Text style={{ color: '#e8c468' }}>• 执行阶段：{pendingPreviewAgent && agentStageMap[pendingPreviewAgent.type]}</Text>
+            <br />
+            <Text style={{ color: '#e8c468' }}>• 游戏类型：RPG</Text>
+            <br />
+            <Text style={{ color: '#e8c468' }}>• 执行模式：异步（可继续浏览其他页面）</Text>
+          </div>
           <Alert
             type="info"
-            message="试运行会消耗AI模型调用额度，确认要继续吗？"
+            message="任务将在后台执行，您可以在「试运行任务列表」中查看进度"
             showIcon
+            style={{ marginTop: 12 }}
           />
         </Space>
       </Modal>
 
-      {/* 试运行结果弹窗 */}
-      <Modal
-        open={!!previewAgent}
-        title={previewAgent ? `试运行：${previewAgent.name}` : ''}
-        onCancel={() => {
-          setPreviewAgent(null)
-          setPreviewResult(null)
-        }}
-        width={720}
-        footer={null}
-        destroyOnClose
-        afterOpenChange={(open) => {
-          if (open && previewAgent && !previewResult && !loading) {
-            handlePreviewWithDefaults(previewAgent)
-          }
-        }}
-      >
-        {previewAgent && (
-          <div className="space-y-4">
-            <Alert
-              type="info"
-              message={`该员工正在按 ${agentStageMap[previewAgent.type] || 'planning'} 阶段执行试运行任务，使用默认配置`}
-              showIcon
-            />
-
-            {loading && (
-              <Card size="small">
-                <Space>
-                  <Text>正在执行试运行...</Text>
-                </Space>
-              </Card>
-            )}
-
-            {previewResult && (
-              <Card size="small" title="试运行结果">
-                <p>
-                  阶段 <Tag color="blue">{previewResult.stageId}</Tag> 状态{' '}
-                  <Tag color="green">{previewResult.status || 'completed'}</Tag>
-                </p>
-                {previewResult.artifacts && previewResult.artifacts.length > 0 ? (
-                  <Space direction="vertical" className="w-full">
-                    {previewResult.artifacts.map((artifact) => (
-                      <Card size="small" key={artifact.artifactId || artifact.url}>
-                        <Space direction="vertical" className="w-full">
-                          <Text strong>{artifact.type}</Text>
-                          <Text type="secondary">{artifact.format}</Text>
-                          <a href={artifact.url} target="_blank" rel="noreferrer">
-                            下载 / 查看
-                          </a>
-                          <ArtifactPreview artifact={artifact} />
-                        </Space>
-                      </Card>
-                    ))}
-                  </Space>
-                ) : (
-                  <Alert message="暂无可用的产出，请检查输入后再次尝试" type="warning" showIcon />
-                )}
-              </Card>
-            )}
-          </div>
-        )}
-      </Modal>
+      {/* 试运行结果弹窗 - 已废弃，改用异步任务模式 */}
+      {/* <Modal ... /> */}
 
       <Modal
         title="创建员工Agent"

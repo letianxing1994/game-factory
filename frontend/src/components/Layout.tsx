@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Layout as AntLayout, Menu } from 'antd'
-import { 
-  DashboardOutlined, 
-  ShopOutlined, 
+import {
+  DashboardOutlined,
+  ShopOutlined,
   RobotOutlined,
   PlaySquareOutlined,
-  ShoppingOutlined, 
-  MessageOutlined, 
+  ShoppingOutlined,
+  MessageOutlined,
   UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  ExperimentOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -60,6 +61,11 @@ const Layout: React.FC = () => {
       key: '/agents',
       icon: <RobotOutlined />,
       label: '员工Agent',
+    },
+    {
+      key: '/preview-tasks',
+      icon: <ExperimentOutlined />,
+      label: '试运行任务',
     },
     {
       key: '/games',

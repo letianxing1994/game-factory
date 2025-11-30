@@ -12,6 +12,8 @@ import Games from './pages/Games'
 import Market from './pages/Market'
 import Community from './pages/Community'
 import Profile from './pages/Profile'
+import PreviewTasks from './pages/PreviewTasks'
+import PreviewTaskDetail from './pages/PreviewTaskDetail'
 import ProtectedRoute from './components/ProtectedRoute'
 
 const queryClient = new QueryClient({
@@ -71,6 +73,8 @@ function App() {
                 <Route path="market" element={<Market />} />
                 <Route path="community" element={<Community />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="preview-tasks" element={<PreviewTasks />} />
+                <Route path="preview-tasks/:taskId" element={<PreviewTaskDetail />} />
               </Route>
             </Routes>
           </Router>

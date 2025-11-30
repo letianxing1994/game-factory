@@ -22,6 +22,7 @@ import gameRoutes from './routes/games';
 import workflowRoutes from './routes/workflows';
 import userAssetsRoutes from './routes/userAssets';
 import agentTestRoutes from './routes/agentTest';
+import previewTasksRoutes from './routes/previewTasks';
 import { initWorkflowQueueConsumers } from './services/workflowQueue';
 
 dotenv.config();
@@ -90,6 +91,7 @@ app.use('/api/games', gameRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/user-assets', userAssetsRoutes);
 app.use('/api/agents-test', agentTestRoutes);
+app.use('/api/preview-tasks', previewTasksRoutes);
 
 // 静态文件服务
 app.use('/uploads', express.static('uploads'));

@@ -212,7 +212,7 @@ const CompanyEmployeesCard: React.FC<{ companyId?: number; embedded?: boolean }>
       title: '类型',
       dataIndex: 'type',
       width: 100,
-      render: (value: string, record: any) => {
+      render: (value: string) => {
         const typeColorMap: Record<string, string> = {
           planner: 'rgba(64, 169, 255, 0.3)',
           architect: 'rgba(19, 194, 194, 0.3)',
