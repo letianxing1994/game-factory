@@ -58,7 +58,7 @@ export const AgentTestPage: React.FC<AgentTestPageProps> = () => {
       name: '策划 Agent',
       type: 'planning',
       provider: 'deepseek',
-      model: 'deepseek-r1',
+      model: 'deepseek-reasoner',
       systemPrompt: '你是一位资深的游戏策划专家...',
       supportedAssetTypes: ['planning_doc'],
     },
@@ -323,7 +323,7 @@ export const AgentTestPage: React.FC<AgentTestPageProps> = () => {
                   </Form.Item>
 
                   <Form.Item label="模型" name="model">
-                    <Input placeholder="如：deepseek-r1, gpt-4o, claude-sonnet-4.5" />
+                    <Input placeholder="如：deepseek-reasoner, gpt-4o, claude-sonnet-4.5" />
                   </Form.Item>
 
                   <Form.Item label="系统提示词" name="systemPrompt">

@@ -1825,7 +1825,7 @@ const Companies: React.FC = () => {
                     { label: 'GPT-4o（推荐）', value: 'gpt-4o' },
                     { label: 'GPT-5', value: 'gpt-5' },
                     { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4.5' },
-                    { label: 'DeepSeek R1', value: 'deepseek-r1' },
+                    { label: 'DeepSeek Reasoner', value: 'deepseek-reasoner' },
                   ]}
                   onChange={setConversationalModel}
                 />
