@@ -88,7 +88,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     );
 
     // 构建回调URL
-    const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/preview-tasks/${taskId}/callback`;
+    const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/preview-tasks/${taskId}/callback`;
 
     // 调用 my-agent-test 的异步预览接口
     const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
@@ -411,7 +411,7 @@ router.post('/:taskId/restart', authenticate, async (req: AuthRequest, res) => {
     );
 
     // 构建回调URL
-    const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/preview-tasks/${taskId}/callback`;
+    const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/preview-tasks/${taskId}/callback`;
 
     // 调用 my-agent-test 的异步预览接口
     const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
