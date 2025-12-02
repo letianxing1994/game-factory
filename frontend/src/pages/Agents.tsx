@@ -136,10 +136,15 @@ const specializationOptions = {
 const Agents: React.FC = () => {
   const navigate = useNavigate()
   const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingAgent, setEditingAgent] = useState<EmployeeAgent | null>(null)
   const [selectedType, setSelectedType] = useState<string>('')
   const [selectedDimension, setSelectedDimension] = useState<string>('')
+  const [editSelectedType, setEditSelectedType] = useState<string>('')
+  const [editSelectedDimension, setEditSelectedDimension] = useState<string>('')
   const [previewConfirmVisible, setPreviewConfirmVisible] = useState(false)
   const [pendingPreviewAgent, setPendingPreviewAgent] = useState<EmployeeAgent | null>(null)
   const [taskNameInput, setTaskNameInput] = useState<string>('')
@@ -265,9 +270,10 @@ const Agents: React.FC = () => {
         dimension: values.dimension || undefined,
         specialization: values.specialization,
         extra_traits: values.extra_traits || undefined,
+        default_requirements: values.default_requirements || undefined,
         companyId: values.companyId || undefined,
       }
-      
+
       // 3D美术Agent使用双模型
       if (values.type === 'artist' && values.dimension === '3d') {
         payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
@@ -279,7 +285,7 @@ const Agents: React.FC = () => {
         // 其他Agent使用单一ai_model
         payload.ai_model = values.ai_model || undefined
       }
-      
+
       const res = await apiClient.post<{ success: boolean; data: EmployeeAgent }>(
         '/agents',
         payload
@@ -302,6 +308,67 @@ const Agents: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEditAgent = async (values: any) => {
+    if (!editingAgent) return
+
+    setLoading(true)
+    try {
+      const payload: any = {
+        name: values.name,
+        specialization: values.specialization,
+        extra_traits: values.extra_traits || undefined,
+        default_requirements: values.default_requirements || undefined,
+      }
+
+      // 根据类型和维度设置模型
+      if (editingAgent.type === 'artist' && editingAgent.dimension === '3d') {
+        payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
+        payload.ai_model_3d = values.ai_model_3d || 'meshy-4'
+      } else if (editingAgent.type === 'artist' && editingAgent.dimension === '2d') {
+        payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
+      } else {
+        payload.ai_model = values.ai_model || undefined
+      }
+
+      const res = await apiClient.put<{ success: boolean; message: string }>(
+        `/agents/${editingAgent.id}`,
+        payload
+      )
+
+      if (res.success) {
+        message.success('员工信息更新成功！')
+        setEditModalOpen(false)
+        setEditingAgent(null)
+        editForm.resetFields()
+        setEditSelectedType('')
+        setEditSelectedDimension('')
+        refetch()
+      } else {
+        message.error(res.message || '更新失败')
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '更新员工信息失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleOpenEdit = (agent: EmployeeAgent) => {
+    setEditingAgent(agent)
+    setEditSelectedType(agent.type)
+    setEditSelectedDimension(agent.dimension || '')
+    editForm.setFieldsValue({
+      name: agent.name,
+      specialization: agent.specialization,
+      extra_traits: agent.extra_traits,
+      default_requirements: agent.default_requirements,
+      ai_model: agent.ai_model,
+      ai_model_2d: agent.ai_model_2d,
+      ai_model_3d: agent.ai_model_3d,
+    })
+    setEditModalOpen(true)
   }
 
   const handleConversationalAgentSend = async () => {
@@ -563,6 +630,12 @@ const Agents: React.FC = () => {
           >
             试运行
           </Button>
+          <Button
+            type="link"
+            onClick={() => handleOpenEdit(record)}
+          >
+            编辑
+          </Button>
           {!record.company_id && (
             <Button
               type="link"
@@ -601,12 +674,12 @@ const Agents: React.FC = () => {
                 onOk: async () => {
                   const priceInput = document.getElementById('sell-price-input') as HTMLInputElement
                   const price = parseInt(priceInput?.value || '0')
-                  
+
                   if (price < 100) {
                     message.error('售价不能低于100游戏币')
                     return Promise.reject()
                   }
-                  
+
                   try {
                     const res = await apiClient.post<{ success: boolean; message: string }>(
                       `/agents/${record.id}/sell`,
@@ -892,14 +965,25 @@ const Agents: React.FC = () => {
             </Form.Item>
           )}
 
-          <Form.Item 
-            name="extra_traits" 
+          <Form.Item
+            name="extra_traits"
             label="额外特点"
             tooltip="会注入到agent执行时的系统提示词中，影响输出结果"
           >
-            <Input.TextArea 
-              rows={3} 
-              placeholder="例如：擅长C++性能优化和内存管理、精通日式动漫风格和角色设计、擅长数值平衡和经济系统设计等" 
+            <Input.TextArea
+              rows={3}
+              placeholder="例如：擅长C++性能优化和内存管理、精通日式动漫风格和角色设计、擅长数值平衡和经济系统设计等"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="default_requirements"
+            label="默认需求描述（可选）"
+            tooltip="当使用此Agent执行预览任务时，如果用户没有提供游戏描述，将使用此默认描述"
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="例如：创建一个开放世界RPG游戏，包含魔法系统、装备系统和多分支剧情..."
             />
           </Form.Item>
 
@@ -1064,6 +1148,174 @@ const Agents: React.FC = () => {
             </Space.Compact>
           </Tabs.TabPane>
         </Tabs>
+      </Modal>
+
+      {/* 编辑员工Modal */}
+      <Modal
+        title="编辑员工信息"
+        open={editModalOpen}
+        onCancel={() => {
+          setEditModalOpen(false)
+          setEditingAgent(null)
+          editForm.resetFields()
+          setEditSelectedType('')
+          setEditSelectedDimension('')
+        }}
+        footer={null}
+        width={700}
+        destroyOnClose
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleEditAgent}
+          onValuesChange={(changedValues) => {
+            if (changedValues.dimension) {
+              setEditSelectedDimension(changedValues.dimension)
+              // 切换维度时清空模型字段
+              editForm.setFieldsValue({ ai_model_2d: undefined, ai_model_3d: undefined })
+            }
+          }}
+        >
+          <Form.Item
+            name="name"
+            label="员工名称"
+            rules={[{ required: true, message: '请输入员工名称' }]}
+          >
+            <Input placeholder="例如：张三" />
+          </Form.Item>
+
+          <Alert
+            type="info"
+            message="提示"
+            description={`员工类型为：${editingAgent?.type}${editingAgent?.dimension ? ` (${editingAgent.dimension})` : ''}`}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Form.Item
+            name="specialization"
+            label="专业方向"
+            rules={[{ required: true, message: '请选择专业方向' }]}
+            tooltip={
+              editSelectedType === 'planner'
+                ? '擅长的游戏品类'
+                : editSelectedType === 'artist'
+                ? '擅长的美术风格'
+                : editSelectedType === 'developer'
+                ? '擅长的技术方向'
+                : '专业方向'
+            }
+          >
+            <Select
+              placeholder="选择专业方向"
+              options={specializationOptions[editSelectedType as keyof typeof specializationOptions] || []}
+            />
+          </Form.Item>
+
+          {editingAgent?.type === 'artist' && editingAgent?.dimension === '3d' && (
+            <>
+              <Form.Item
+                name="ai_model_2d"
+                label="2D模型（贴图/原画）"
+                tooltip="用于生成贴图、概念图等2D资产"
+              >
+                <Select
+                  placeholder="选择2D模型"
+                  options={aiModelOptions.artist3d_2d || []}
+                />
+              </Form.Item>
+              <Form.Item
+                name="ai_model_3d"
+                label="3D模型（模型生成）"
+                tooltip="用于生成3D模型资产"
+              >
+                <Select
+                  placeholder="选择3D模型"
+                  options={aiModelOptions.artist3d_3d || []}
+                />
+              </Form.Item>
+            </>
+          )}
+
+          {editingAgent?.type === 'artist' && editingAgent?.dimension === '2d' && (
+            <Form.Item
+              name="ai_model_2d"
+              label="AI模型"
+              tooltip="用于生成2D美术资产"
+            >
+              <Select
+                placeholder="选择AI模型"
+                options={aiModelOptions.artist2d || []}
+              />
+            </Form.Item>
+          )}
+
+          {editingAgent?.type && editingAgent.type !== 'artist' && (
+            <Form.Item
+              name="ai_model"
+              label="AI模型"
+              tooltip="留空则使用配置文件中的默认模型"
+            >
+              <Select
+                placeholder="选择AI模型（可选）"
+                allowClear
+                options={aiModelOptions[editingAgent.type as keyof typeof aiModelOptions] || []}
+              />
+            </Form.Item>
+          )}
+
+          <Form.Item
+            name="extra_traits"
+            label="额外特点"
+            tooltip="会注入到agent执行时的系统提示词中，影响输出结果"
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder="例如：擅长C++性能优化和内存管理、精通日式动漫风格和角色设计、擅长数值平衡和经济系统设计等"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="default_requirements"
+            label="默认需求描述（可选）"
+            tooltip="当使用此Agent执行预览任务时，如果用户没有提供游戏描述，将使用此默认描述"
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="例如：创建一个开放世界RPG游戏，包含魔法系统、装备系统和多分支剧情..."
+            />
+          </Form.Item>
+
+          <Alert
+            type="info"
+            message={<span style={{ color: '#FFD76E' }}>提示</span>}
+            description={<span style={{ color: '#d4c5a9' }}>修改后的信息将在下次使用该员工时生效。AI模型和额外特点会影响agent的实际执行效果。</span>}
+            showIcon
+            style={{
+              marginBottom: 16,
+              background: 'rgba(40, 25, 15, 0.6)',
+              border: '1px solid rgba(200, 140, 80, 0.3)'
+            }}
+          />
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={loading}>
+                保存修改
+              </Button>
+              <Button
+                onClick={() => {
+                  setEditModalOpen(false)
+                  setEditingAgent(null)
+                  editForm.resetFields()
+                }}
+              >
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* 分配员工到公司的Modal */}

@@ -38,9 +38,9 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     // 生成 taskId
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // 查询 agent 获取 type 和 ai_model，然后映射到 stageId
+    // 查询 agent 获取 type、ai_model 和 default_requirements
     const agents = await query(
-      'SELECT type, ai_model FROM agents WHERE id = ?',
+      'SELECT type, ai_model, default_requirements FROM agents WHERE id = ?',
       [agentId]
     );
 
@@ -93,6 +93,17 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     // 调用 my-agent-test 的异步预览接口
     const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
 
+    // 合并 Agent 的默认需求描述
+    // 如果用户没有提供 additionalRequirements，使用 Agent 的 default_requirements
+    // 如果都有，则合并（用户的在前，Agent 的在后）
+    const mergedUserInput = {
+      ...userInput,
+      additionalRequirements:
+        userInput?.additionalRequirements && agent.default_requirements
+          ? `${userInput.additionalRequirements}\n\n### Agent 默认要求\n${agent.default_requirements}`
+          : userInput?.additionalRequirements || agent.default_requirements || undefined
+    };
+
     const previewResponse = await fetch(`${agentTestUrl}/api/executions/preview`, {
       method: 'POST',
       headers: {
@@ -107,7 +118,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         },
         project,
         cloudProvider,
-        userInput,
+        userInput: mergedUserInput,
         taskId,
         callbackUrl,
         async: true // 启用异步模式

@@ -14,8 +14,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   const connection = await getConnection();
   
   try {
-    const { 
-      name, 
+    const {
+      name,
       type,
       dimension,
       ai_model,
@@ -23,7 +23,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       ai_model_3d,
       specialization,
       extra_traits,
-      companyId 
+      default_requirements,
+      companyId
     } = req.body;
     
     const userId = req.user!.id;
@@ -70,19 +71,20 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     const agentResult = await connection.execute(
       `INSERT INTO agents (
         owner_id, name, type, dimension, ai_model, ai_model_2d, ai_model_3d,
-        specialization, extra_traits, company_id, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        specialization, extra_traits, default_requirements, company_id, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        userId, 
-        name, 
-        type, 
+        userId,
+        name,
+        type,
         dimension || null,
         ai_model || null,
         ai_model_2d || null,
         ai_model_3d || null,
-        specialization, 
+        specialization,
         extra_traits || null,
-        companyId || null, 
+        default_requirements || null,
+        companyId || null,
         companyId ? 'employed' : 'available'
       ]
     );
@@ -134,6 +136,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         ai_model,
         specialization,
         extra_traits,
+        default_requirements,
         companyId,
         status: companyId ? 'employed' : 'available'
       }
@@ -406,7 +409,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
-    const { name, ai_model, specialization, extra_traits } = req.body;
+    const { name, ai_model, ai_model_2d, ai_model_3d, specialization, extra_traits, default_requirements } = req.body;
 
     // 检查员工所有权
     const ownership = await query(
@@ -415,25 +418,34 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     );
 
     if (ownership.length === 0) {
-      return res.status(403).json({ 
-        success: false, 
-        message: '无权更新此员工信息或员工不存在' 
+      return res.status(403).json({
+        success: false,
+        message: '无权更新此员工信息或员工不存在'
       });
     }
 
     const result = await query(
-      `UPDATE agents 
-       SET name = ?, ai_model = ?, specialization = ?, 
-           extra_traits = ?, updated_at = NOW()
+      `UPDATE agents
+       SET name = ?, ai_model = ?, ai_model_2d = ?, ai_model_3d = ?,
+           specialization = ?, extra_traits = ?, default_requirements = ?,
+           updated_at = NOW()
        WHERE id = ?`,
-      [name, ai_model || null, specialization, 
-       extra_traits || null, id]
+      [
+        name,
+        ai_model || null,
+        ai_model_2d || null,
+        ai_model_3d || null,
+        specialization,
+        extra_traits || null,
+        default_requirements || null,
+        id
+      ]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: '员工Agent不存在' 
+      return res.status(404).json({
+        success: false,
+        message: '员工Agent不存在'
       });
     }
 
@@ -468,9 +480,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
 
   } catch (error) {
     logger.error('更新员工Agent信息失败:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: '更新员工Agent信息失败' 
+    res.status(500).json({
+      success: false,
+      message: '更新员工Agent信息失败'
     });
   }
 });

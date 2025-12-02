@@ -43,6 +43,7 @@ export interface EmployeeAgent {
   ai_model_3d?: string; // 3D模型（用于3D资产生成）
   specialization: string;
   extra_traits?: string; // 额外特点
+  default_requirements?: string; // 默认需求描述
   status: 'employed' | 'available';
   owner_id: number;
   company_id?: number;
