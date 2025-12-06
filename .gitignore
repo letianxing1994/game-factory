@@ -41,3 +41,14 @@ tmp/
 temp/
 *.tmp
 
+# Uploaded files (keep folder structure)
+backend/data/*
+!backend/data/README.md
+!backend/data/concept-images/
+backend/data/concept-images/*
+!backend/data/concept-images/.gitkeep
+
+# Uploads
+uploads/
+**/uploads/
+

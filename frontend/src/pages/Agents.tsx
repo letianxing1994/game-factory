@@ -62,16 +62,24 @@ const aiModelOptions = {
     { label: 'DeepSeek Reasoner', value: 'deepseek-reasoner' },
   ],
   artist2d: [
-    { label: 'DALL-E-3（默认）', value: 'dall-e-3' },
-    { label: 'Banana2（Google）', value: 'banana2' },
+    { label: 'Gemini 3 Pro（默认）', value: 'gemini-3-pro' },
+    { label: 'DALL-E-3', value: 'dall-e-3' },
+    { label: 'Imagen 3（Google）', value: 'imagen-3' },
     { label: 'Midjourney', value: 'midjourney' },
-    { label: 'Stable Diffusion', value: 'stable-diffusion' },
+    { label: 'Stable Diffusion XL', value: 'stable-diffusion-xl' },
+  ],
+  planner_2d: [
+    { label: 'Gemini 3 Pro（推荐）', value: 'gemini-3-pro' },
+    { label: 'DALL-E-3', value: 'dall-e-3' },
+    { label: 'Imagen 3（Google）', value: 'imagen-3' },
+    { label: 'Stable Diffusion XL', value: 'stable-diffusion-xl' },
   ],
   artist3d_2d: [
-    { label: 'DALL-E-3（推荐）', value: 'dall-e-3' },
-    { label: 'Banana2（Google）', value: 'banana2' },
+    { label: 'Gemini 3 Pro（推荐）', value: 'gemini-3-pro' },
+    { label: 'DALL-E-3', value: 'dall-e-3' },
+    { label: 'Imagen 3（Google）', value: 'imagen-3' },
     { label: 'Midjourney', value: 'midjourney' },
-    { label: 'Stable Diffusion', value: 'stable-diffusion' },
+    { label: 'Stable Diffusion XL', value: 'stable-diffusion-xl' },
   ],
   artist3d_3d: [
     { label: 'Meshy-4（推荐）', value: 'meshy-4' },
@@ -281,6 +289,10 @@ const Agents: React.FC = () => {
       } else if (values.type === 'artist' && values.dimension === '2d') {
         // 2D美术Agent只用2D模型
         payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
+      } else if (values.type === 'planner') {
+        // 策划Agent使用LLM模型+2D模型
+        payload.ai_model = values.ai_model || undefined
+        payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
       } else {
         // 其他Agent使用单一ai_model
         payload.ai_model = values.ai_model || undefined
@@ -327,6 +339,9 @@ const Agents: React.FC = () => {
         payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
         payload.ai_model_3d = values.ai_model_3d || 'meshy-4'
       } else if (editingAgent.type === 'artist' && editingAgent.dimension === '2d') {
+        payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
+      } else if (editingAgent.type === 'planner') {
+        payload.ai_model = values.ai_model || undefined
         payload.ai_model_2d = values.ai_model_2d || 'dall-e-3'
       } else {
         payload.ai_model = values.ai_model || undefined
@@ -562,6 +577,7 @@ const Agents: React.FC = () => {
           if (lowerModel.includes('claude')) return { bg: 'rgba(19, 194, 194, 0.3)', border: 'rgba(19, 194, 194, 0.6)' }
           if (lowerModel.includes('deepseek')) return { bg: 'rgba(24, 144, 255, 0.3)', border: 'rgba(24, 144, 255, 0.6)' }
           if (lowerModel.includes('dall-e')) return { bg: 'rgba(82, 196, 26, 0.3)', border: 'rgba(82, 196, 26, 0.6)' }
+          if (lowerModel.includes('imagen')) return { bg: 'rgba(66, 133, 244, 0.3)', border: 'rgba(66, 133, 244, 0.6)' }
           if (lowerModel.includes('banana')) return { bg: 'rgba(250, 140, 22, 0.3)', border: 'rgba(250, 140, 22, 0.6)' }
           if (lowerModel.includes('midjourney')) return { bg: 'rgba(255, 77, 79, 0.3)', border: 'rgba(255, 77, 79, 0.6)' }
           if (lowerModel.includes('stable')) return { bg: 'rgba(160, 217, 17, 0.3)', border: 'rgba(160, 217, 17, 0.6)' }
@@ -604,6 +620,17 @@ const Agents: React.FC = () => {
         if (record.type === 'artist' && record.dimension === '2d') {
           const model2d = record.ai_model_2d || 'dall-e-3'
           return createColoredTag(model2d, getModelColor(model2d))
+        }
+        // 策划Agent显示双模型
+        if (record.type === 'planner') {
+          const llmModel = record.ai_model || '默认模型'
+          const model2d = record.ai_model_2d || 'dall-e-3'
+          return (
+            <Space direction="vertical" size={2}>
+              {createColoredTag(`${llmModel} (LLM)`, getModelColor(llmModel))}
+              {createColoredTag(`${model2d} (概念图)`, getModelColor(model2d))}
+            </Space>
+          )
         }
         // 其他Agent显示单一模型
         const displayModel = record.ai_model || model || '默认模型'
@@ -916,7 +943,7 @@ const Agents: React.FC = () => {
                 name="ai_model_2d"
                 label="2D模型（贴图/原画）"
                 tooltip="用于生成贴图、概念图等2D资产"
-                initialValue="dall-e-3"
+                initialValue="gemini-3-pro"
               >
                 <Select 
                   placeholder="选择2D模型" 
@@ -942,16 +969,43 @@ const Agents: React.FC = () => {
               name="ai_model_2d"
               label="AI模型"
               tooltip="用于生成2D美术资产"
-              initialValue="dall-e-3"
+              initialValue="gemini-3-pro"
             >
-              <Select 
-                placeholder="选择AI模型" 
+              <Select
+                placeholder="选择AI模型"
                 options={aiModelOptions.artist2d || []}
               />
             </Form.Item>
           )}
 
-          {selectedType && selectedType !== 'artist' && (
+          {selectedType === 'planner' && (
+            <>
+              <Form.Item
+                name="ai_model"
+                label="LLM模型"
+                tooltip="用于策划文档生成，留空则使用配置文件中的默认模型"
+              >
+                <Select
+                  placeholder="选择LLM模型（可选）"
+                  allowClear
+                  options={aiModelOptions.planner || []}
+                />
+              </Form.Item>
+              <Form.Item
+                name="ai_model_2d"
+                label="2D图像生成模型"
+                tooltip="用于生成游戏概念图"
+                initialValue="gemini-3-pro"
+              >
+                <Select
+                  placeholder="选择2D模型"
+                  options={aiModelOptions.planner_2d || []}
+                />
+              </Form.Item>
+            </>
+          )}
+
+          {selectedType && selectedType !== 'artist' && selectedType !== 'planner' && (
             <Form.Item
               name="ai_model"
               label="AI模型"

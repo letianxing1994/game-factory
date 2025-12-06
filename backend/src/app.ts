@@ -23,6 +23,7 @@ import workflowRoutes from './routes/workflows';
 import userAssetsRoutes from './routes/userAssets';
 import agentTestRoutes from './routes/agentTest';
 import previewTasksRoutes from './routes/previewTasks';
+import uploadRoutes from './routes/upload';
 import { initWorkflowQueueConsumers } from './services/workflowQueue';
 
 dotenv.config();
@@ -92,9 +93,11 @@ app.use('/api/workflows', workflowRoutes);
 app.use('/api/user-assets', userAssetsRoutes);
 app.use('/api/agents-test', agentTestRoutes);
 app.use('/api/preview-tasks', previewTasksRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // 静态文件服务
 app.use('/uploads', express.static('uploads'));
+app.use('/data', express.static('data'));
 
 // 404处理
 app.use('*', (req, res) => {

@@ -22,8 +22,9 @@ import {
   Typography,
   message,
 } from 'antd'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { LeftOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
 import { apiClient } from '../services/api'
+import { ConceptImageUpload } from '../components/ConceptImageUpload'
 import type {
   ClarificationState,
   Company,
@@ -540,6 +541,7 @@ const Companies: React.FC = () => {
     const [fundForm] = Form.useForm()
 
     const [fundModalVisible, setFundModalVisible] = useState(false)
+    const [assetUploadVisible, setAssetUploadVisible] = useState(false)  // 资源上传模态框
 
     const [executeModalVisible, setExecuteModalVisible] = useState(false)
     const [executePrompt, setExecutePrompt] = useState('')
@@ -1445,6 +1447,18 @@ const Companies: React.FC = () => {
           </Form>
             </Tabs.TabPane>
           </Tabs>
+        )}
+
+        {/* 概念图上传模态框 */}
+        {selectedCompanyId && (
+          <ConceptImageUpload
+            visible={conceptImageUploadVisible}
+            companyId={selectedCompanyId}
+            onClose={() => setConceptImageUploadVisible(false)}
+            onSuccess={(imageUrl) => {
+              message.success(`概念图上传成功: ${imageUrl}`)
+            }}
+          />
         )}
       </Card>
 
