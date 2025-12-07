@@ -570,6 +570,134 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+// 雇佣员工Agent到公司
+router.post('/:id/hire', authenticate, async (req: AuthRequest, res) => {
+  const connection = await getConnection();
+
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { company_id } = req.body;
+
+    if (!company_id) {
+      return res.status(400).json({
+        success: false,
+        message: '请指定目标公司'
+      });
+    }
+
+    // 开始事务
+    await connection.beginTransaction();
+
+    // 检查员工所有权和状态
+    const [agentRows] = await connection.execute<any[]>(
+      'SELECT * FROM agents WHERE id = ? AND owner_id = ?',
+      [id, userId]
+    );
+
+    if (!agentRows || agentRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: '员工Agent不存在或无权操作'
+      });
+    }
+
+    const agent = agentRows[0];
+
+    if (agent.status === 'employed') {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: '该员工已被雇佣'
+      });
+    }
+
+    // 检查公司所有权
+    const [companyRows] = await connection.execute<any[]>(
+      'SELECT * FROM companies WHERE id = ? AND owner_id = ? AND status = "active"',
+      [company_id, userId]
+    );
+
+    if (!companyRows || companyRows.length === 0) {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: '公司不存在或无权访问'
+      });
+    }
+
+    const company = companyRows[0];
+
+    // 检查公司员工数量
+    const [employeeCountRows] = await connection.execute<any[]>(
+      'SELECT COUNT(*) as count FROM agents WHERE company_id = ? AND status = "employed"',
+      [company_id]
+    );
+
+    if (employeeCountRows[0].count >= company.max_employees) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: '公司员工已达上限'
+      });
+    }
+
+    // 雇佣员工
+    await connection.execute(
+      'UPDATE agents SET status = "employed", company_id = ?, updated_at = NOW() WHERE id = ?',
+      [company_id, id]
+    );
+
+    await connection.commit();
+
+    // 清除缓存
+    await redisClient.del(`agent:${id}`);
+    const keys = await redisClient.keys(`user:${userId}:agents:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+
+    // 发送Kafka消息
+    await kafkaProducer.send({
+      topic: 'agent-events',
+      messages: [{
+        value: JSON.stringify({
+          event: 'agent_hired',
+          agentId: id,
+          companyId: company_id,
+          userId,
+          timestamp: new Date().toISOString()
+        })
+      }]
+    });
+
+    logger.info(`用户 ${userId} 雇佣员工Agent ${id} 到公司 ${company_id}`);
+
+    // 获取更新后的员工信息
+    const [updatedAgentRows] = await connection.execute<any[]>(
+      'SELECT * FROM agents WHERE id = ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: '员工雇佣成功',
+      data: updatedAgentRows[0]
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    logger.error('雇佣员工Agent失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '雇佣员工Agent失败，请稍后重试'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
 // 解雇员工Agent
 router.post('/:id/fire', authenticate, async (req: AuthRequest, res) => {
   const connection = await getConnection();

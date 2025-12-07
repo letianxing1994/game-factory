@@ -152,7 +152,7 @@ const Agents: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('')
   const [selectedDimension, setSelectedDimension] = useState<string>('')
   const [editSelectedType, setEditSelectedType] = useState<string>('')
-  const [editSelectedDimension, setEditSelectedDimension] = useState<string>('')
+  const [_editSelectedDimension, setEditSelectedDimension] = useState<string>('')  // 下划线前缀表示暂未读取
   const [previewConfirmVisible, setPreviewConfirmVisible] = useState(false)
   const [pendingPreviewAgent, setPendingPreviewAgent] = useState<EmployeeAgent | null>(null)
   const [taskNameInput, setTaskNameInput] = useState<string>('')

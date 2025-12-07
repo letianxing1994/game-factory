@@ -22,7 +22,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { LeftOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
+import { LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { apiClient } from '../services/api'
 import { ConceptImageUpload } from '../components/ConceptImageUpload'
 import type {
@@ -541,7 +541,8 @@ const Companies: React.FC = () => {
     const [fundForm] = Form.useForm()
 
     const [fundModalVisible, setFundModalVisible] = useState(false)
-    const [assetUploadVisible, setAssetUploadVisible] = useState(false)  // 资源上传模态框
+    // const [assetUploadVisible, setAssetUploadVisible] = useState(false)  // 资源上传模态框（暂未使用）
+    const [conceptImageUploadVisible, setConceptImageUploadVisible] = useState(false)  // 概念图上传模态框
 
     const [executeModalVisible, setExecuteModalVisible] = useState(false)
     const [executePrompt, setExecutePrompt] = useState('')
