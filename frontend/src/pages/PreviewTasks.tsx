@@ -45,15 +45,10 @@ const PreviewTasks: React.FC = () => {
       return response
     },
     {
-      refetchInterval: (data) => {
-        // 智能轮询：如果有运行中或等待中的任务才轮询，否则停止
-        const tasks = data?.data || []
-        const hasActiveTasks = tasks.some(
-          (task: PreviewTask) => task.status === 'running' || task.status === 'pending'
-        )
-        return hasActiveTasks ? 10000 : false // 10秒轮询一次，或不轮询
-      },
+      // 移除轮询：任务状态更新由 my-agent-test 通过回调自动推送到后端
+      // 只在组件挂载时获取一次数据
       refetchOnMount: 'always',
+      refetchOnWindowFocus: false, // 禁用窗口聚焦时自动刷新
     }
   )
 
