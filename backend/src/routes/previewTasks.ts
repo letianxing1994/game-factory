@@ -407,8 +407,15 @@ router.post('/:taskId/restart', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
-    // 解析配置
-    const config = JSON.parse(task.config);
+    // 解析配置 - 如果已经是对象就直接使用，否则需要解析
+    let config;
+    if (typeof task.config === 'string') {
+      config = JSON.parse(task.config);
+    } else if (typeof task.config === 'object' && task.config !== null) {
+      config = task.config;
+    } else {
+      throw new Error('配置格式无效');
+    }
 
     // 将 agent type 映射到 stageId
     const agentStageMap: Record<string, string> = {
@@ -502,10 +509,92 @@ router.post('/:taskId/restart', authenticate, async (req: AuthRequest, res) => {
 });
 
 /**
+ * SSE订阅任务状态更新（代理my-agent-test的SSE端点）
+ * GET /api/preview-tasks/:taskId/events
+ */
+router.get('/:taskId/events', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { taskId } = req.params;
+
+    // 验证任务所有权
+    const tasks = await query(
+      'SELECT * FROM agent_preview_tasks WHERE task_id = ? AND user_id = ?',
+      [taskId, userId]
+    );
+
+    if (!tasks || tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '任务不存在'
+      });
+    }
+
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.flushHeaders();
+
+    console.log(`[SSE] 用户 ${userId} 订阅任务 ${taskId} 的状态更新`);
+
+    // 代理到my-agent-test的SSE端点
+    const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
+    const sseUrl = `${agentTestUrl}/api/tasks/${taskId}/events`;
+
+    try {
+      const fetch = (await import('node-fetch')).default;
+      const sseResponse = await fetch(sseUrl);
+
+      if (!sseResponse.ok) {
+        throw new Error(`SSE连接失败: ${sseResponse.status}`);
+      }
+
+      // 转发SSE数据流
+      sseResponse.body?.on('data', (chunk) => {
+        res.write(chunk);
+      });
+
+      sseResponse.body?.on('end', () => {
+        res.end();
+      });
+
+      sseResponse.body?.on('error', (error) => {
+        console.error(`[SSE] 数据流错误:`, error);
+        res.end();
+      });
+
+    } catch (error) {
+      console.error('[SSE] 代理连接失败:', error);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: '无法连接到Agent服务器' })}\n\n`);
+      res.end();
+    }
+
+    // 客户端断开连接时清理
+    req.on('close', () => {
+      console.log(`[SSE] 用户 ${userId} 断开任务 ${taskId} 的订阅`);
+      res.end();
+    });
+
+  } catch (error) {
+    console.error('SSE订阅失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'SSE订阅失败',
+        error: (error as Error).message
+      });
+    }
+  }
+});
+
+/**
  * 删除任务
  * DELETE /api/preview-tasks/:taskId
  */
 router.delete('/:taskId', authenticate, async (req: AuthRequest, res) => {
+  console.log(`[DELETE] 接收到删除任务请求: taskId=${req.params.taskId}, userId=${req.user?.id}`);
   try {
     const userId = req.user!.id;
     const { taskId } = req.params;
@@ -553,5 +642,7 @@ router.delete('/:taskId', authenticate, async (req: AuthRequest, res) => {
     });
   }
 });
+
+console.log('[PreviewTasks Router] DELETE /:taskId route registered');
 
 export default router;

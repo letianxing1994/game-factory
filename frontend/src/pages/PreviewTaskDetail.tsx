@@ -21,8 +21,9 @@ import {
   SyncOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
-import { pollPreviewTaskStatus } from '../services/previewTasks'
+import { getPreviewTaskDetail, subscribePreviewTaskStatus } from '../services/previewTasks'
 import type { PreviewTask } from '../types'
 
 const { Title, Text } = Typography
@@ -33,33 +34,61 @@ const PreviewTaskDetail: React.FC = () => {
   const [task, setTask] = useState<PreviewTask | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sseError, setSseError] = useState(false)
+
+  // 初始加载：只调用一次API获取初始状态
+  const loadInitialStatus = async () => {
+    if (!taskId) return
+
+    try {
+      setLoading(true)
+      const response = await getPreviewTaskDetail(taskId)
+      if (response.success && response.data) {
+        setTask(response.data)
+      }
+    } catch (err: any) {
+      setError(err.message || '加载任务失败')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!taskId) return
 
-    let stopPolling: (() => void) | undefined
+    // 1. 首次加载：调用一次API获取初始状态
+    loadInitialStatus()
 
-    const startPolling = async () => {
-      try {
-        stopPolling = await pollPreviewTaskStatus(taskId, (updatedTask) => {
-          setTask(updatedTask)
-          setLoading(false)
-        })
-      } catch (err: any) {
-        setError(err.message || '加载任务失败')
-        setLoading(false)
+    // 2. 订阅SSE获取实时更新
+    let sseCleanup: (() => void) | undefined
+
+    console.log('[PreviewTaskDetail] 尝试订阅SSE实时更新')
+    sseCleanup = subscribePreviewTaskStatus(
+      taskId,
+      (updatedTask) => {
+        // SSE推送更新
+        setTask(updatedTask)
+        setSseError(false)
+      },
+      (err) => {
+        // SSE连接失败，不降级到轮询
+        console.error('[PreviewTaskDetail] SSE连接失败，请手动刷新页面获取最新状态:', err)
+        setSseError(true)
       }
-    }
+    )
 
-    startPolling()
-
-    // 清理：组件卸载时停止轮询
+    // 清理：组件卸载时关闭SSE连接
     return () => {
-      if (stopPolling) {
-        stopPolling()
+      if (sseCleanup) {
+        sseCleanup()
       }
     }
   }, [taskId])
+
+  // 手动刷新状态
+  const handleRefresh = () => {
+    loadInitialStatus()
+  }
 
   const getStatusIcon = (status?: PreviewTask['status']) => {
     switch (status) {
@@ -215,7 +244,26 @@ const PreviewTaskDetail: React.FC = () => {
             任务详情
           </Title>
         </Space>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={handleRefresh}
+          loading={loading}
+        >
+          刷新状态
+        </Button>
       </div>
+
+      {/* SSE连接失败提示 */}
+      {sseError && (
+        <Alert
+          message="实时更新连接失败"
+          description="无法接收任务的实时状态更新。状态不会自动刷新，请点击上方「刷新状态」按钮手动获取最新状态。"
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setSseError(false)}
+        />
+      )}
 
       {/* 任务状态概览 */}
       <Card>

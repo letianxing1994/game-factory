@@ -101,6 +101,7 @@ app.use('/data', express.static('data'));
 
 // 404处理
 app.use('*', (req, res) => {
+  logger.warn(`404: ${req.method} ${req.originalUrl} - 路由未找到`);
   res.status(404).json({ error: '接口不存在' });
 });
 
