@@ -487,4 +487,57 @@ router.post('/:taskId/restart', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * 删除任务
+ * DELETE /api/preview-tasks/:taskId
+ */
+router.delete('/:taskId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { taskId } = req.params;
+
+    // 验证任务所有权
+    const tasks = await query(
+      'SELECT * FROM agent_preview_tasks WHERE task_id = ? AND user_id = ?',
+      [taskId, userId]
+    );
+
+    if (!tasks || tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '任务不存在'
+      });
+    }
+
+    const task = tasks[0];
+
+    // 只能删除已完成或已失败的任务
+    if (task.status !== 'completed' && task.status !== 'failed') {
+      return res.status(400).json({
+        success: false,
+        message: '只能删除已完成或已失败的任务'
+      });
+    }
+
+    // 删除任务记录
+    await query(
+      'DELETE FROM agent_preview_tasks WHERE task_id = ?',
+      [taskId]
+    );
+
+    res.json({
+      success: true,
+      message: '任务已删除'
+    });
+
+  } catch (error) {
+    console.error('删除任务失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '删除任务失败',
+      error: (error as Error).message
+    });
+  }
+});
+
 export default router;
