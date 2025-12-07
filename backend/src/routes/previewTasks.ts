@@ -509,6 +509,73 @@ router.post('/:taskId/restart', authenticate, async (req: AuthRequest, res) => {
 });
 
 /**
+ * SSE订阅全局任务事件（通知中心）
+ * GET /api/preview-tasks/events/global
+ */
+router.get('/events/global', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.flushHeaders();
+
+    console.log(`[SSE] 用户 ${userId} 订阅全局任务事件`);
+
+    // 代理到my-agent-test的全局SSE端点
+    const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
+    const sseUrl = `${agentTestUrl}/api/tasks/events/global`;
+
+    try {
+      const fetch = (await import('node-fetch')).default;
+      const sseResponse = await fetch(sseUrl);
+
+      if (!sseResponse.ok) {
+        throw new Error(`全局SSE连接失败: ${sseResponse.status}`);
+      }
+
+      // 转发SSE数据流
+      sseResponse.body?.on('data', (chunk) => {
+        res.write(chunk);
+      });
+
+      sseResponse.body?.on('end', () => {
+        res.end();
+      });
+
+      sseResponse.body?.on('error', (error) => {
+        console.error(`[SSE] 全局数据流错误:`, error);
+        res.end();
+      });
+
+    } catch (error) {
+      console.error('[SSE] 全局代理连接失败:', error);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: '无法连接到Agent服务器' })}\n\n`);
+      res.end();
+    }
+
+    // 客户端断开连接时清理
+    req.on('close', () => {
+      console.log(`[SSE] 用户 ${userId} 断开全局任务事件订阅`);
+      res.end();
+    });
+
+  } catch (error) {
+    console.error('全局SSE订阅失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: '全局SSE订阅失败',
+        error: (error as Error).message
+      });
+    }
+  }
+});
+
+/**
  * SSE订阅任务状态更新（代理my-agent-test的SSE端点）
  * GET /api/preview-tasks/:taskId/events
  */
@@ -638,6 +705,66 @@ router.delete('/:taskId', authenticate, async (req: AuthRequest, res) => {
     res.status(500).json({
       success: false,
       message: '删除任务失败',
+      error: (error as Error).message
+    });
+  }
+});
+
+/**
+ * 提交用户输入（转发到my-agent-test）
+ * POST /api/preview-tasks/:taskId/user-input
+ */
+router.post('/:taskId/user-input', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { taskId } = req.params;
+    const { goalId, input } = req.body;
+
+    // 验证必填字段
+    if (!goalId || !input) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少必填字段: goalId, input'
+      });
+    }
+
+    // 验证任务所有权
+    const tasks = await query(
+      'SELECT * FROM agent_preview_tasks WHERE task_id = ? AND user_id = ?',
+      [taskId, userId]
+    );
+
+    if (!tasks || tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '任务不存在或无权访问'
+      });
+    }
+
+    // 转发到my-agent-test
+    const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
+    const response = await fetch(`${agentTestUrl}/api/tasks/${taskId}/user-input`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ goalId, input })
+    });
+
+    if (!response.ok) {
+      throw new Error(`my-agent-test返回错误: ${response.status}`);
+    }
+
+    res.json({
+      success: true,
+      message: '已提交'
+    });
+
+  } catch (error) {
+    console.error('提交用户输入失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '提交用户输入失败',
       error: (error as Error).message
     });
   }
