@@ -333,6 +333,23 @@ router.post('/:taskId/stop', authenticate, async (req: AuthRequest, res) => {
       });
     }
 
+    // 调用 my-agent-test 的停止API
+    const agentTestUrl = process.env.AGENT_TEST_URL || 'http://localhost:8080';
+    try {
+      const stopResponse = await fetch(`${agentTestUrl}/api/tasks/${taskId}/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!stopResponse.ok) {
+        console.warn(`调用 my-agent-test 停止接口失败: ${stopResponse.status}`);
+      }
+    } catch (error) {
+      console.warn('调用 my-agent-test 停止接口失败:', error);
+    }
+
     // 更新任务状态为失败
     await query(
       `UPDATE agent_preview_tasks
@@ -342,9 +359,6 @@ router.post('/:taskId/stop', authenticate, async (req: AuthRequest, res) => {
        WHERE task_id = ?`,
       [taskId]
     );
-
-    // TODO: 调用 my-agent-test 的停止API（如果有）
-    // 目前先只更新数据库状态
 
     res.json({
       success: true,
