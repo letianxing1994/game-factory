@@ -22,7 +22,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { LeftOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
 import { apiClient } from '../services/api'
 import { ConceptImageUpload } from '../components/ConceptImageUpload'
 import type {
@@ -543,6 +543,11 @@ const Companies: React.FC = () => {
     const [fundModalVisible, setFundModalVisible] = useState(false)
     // const [assetUploadVisible, setAssetUploadVisible] = useState(false)  // 资源上传模态框（暂未使用）
     const [conceptImageUploadVisible, setConceptImageUploadVisible] = useState(false)  // 概念图上传模态框
+    const [uploadedConceptImages, setUploadedConceptImages] = useState<Array<{
+      filename: string
+      url: string
+      purpose: string
+    }>>([])  // 已上传的概念图列表
 
     const [executeModalVisible, setExecuteModalVisible] = useState(false)
     const [executePrompt, setExecutePrompt] = useState('')
@@ -1103,6 +1108,12 @@ const Companies: React.FC = () => {
           artStyle: values.artStyle,
           gameMode: values.gameMode,
           additionalRequirements: values.description,
+          resourceFiles: uploadedConceptImages.map(img => ({
+            filename: img.filename,
+            type: 'image' as const,
+            purpose: img.purpose,
+            path: img.url,
+          })),
         },
         executionMode: values.executionMode,
         cloudProvider: values.cloudProvider,
@@ -1438,7 +1449,29 @@ const Companies: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label=" ">
+                <Form.Item label="🖼️ 概念图上传（可选）">
+                  <Button
+                    icon={<UploadOutlined />}
+                    onClick={() => setConceptImageUploadVisible(true)}
+                    block
+                  >
+                    上传概念图 ({uploadedConceptImages.length} 张)
+                  </Button>
+                  {uploadedConceptImages.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {uploadedConceptImages.map((img, index) => (
+                        <Tag key={index} color="blue" style={{ marginBottom: 4 }}>
+                          {img.filename} ({img.purpose})
+                        </Tag>
+                      ))}
+                    </div>
+                  )}
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24}>
+                <Form.Item>
                   <Button type="primary" htmlType="submit" block size="large">
                     🚀 提交到生产线
                   </Button>
@@ -1456,8 +1489,17 @@ const Companies: React.FC = () => {
             visible={conceptImageUploadVisible}
             companyId={selectedCompanyId}
             onClose={() => setConceptImageUploadVisible(false)}
-            onSuccess={(imageUrl) => {
-              message.success(`概念图上传成功: ${imageUrl}`)
+            onSuccess={(imageUrl, category) => {
+              const filename = imageUrl.split('/').pop() || 'concept-image.png'
+              setUploadedConceptImages(prev => [
+                ...prev,
+                {
+                  filename,
+                  url: imageUrl,
+                  purpose: category, // Use category as purpose
+                }
+              ])
+              message.success(`概念图上传成功: ${filename}`)
             }}
           />
         )}

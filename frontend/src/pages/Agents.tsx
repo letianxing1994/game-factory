@@ -12,12 +12,15 @@ import {
   Space,
   Table,
   Tabs,
+  Tag,
   Typography,
   message,
 } from 'antd'
+import { UploadOutlined } from '@ant-design/icons'
 import { apiClient } from '../services/api'
 import { createPreviewTask } from '../services/previewTasks'
 import type { EmployeeAgent } from '../types'
+import { ConceptImageUpload } from '../components/ConceptImageUpload'
 
 const { Title, Text } = Typography
 
@@ -165,6 +168,12 @@ const Agents: React.FC = () => {
   const [assignModalVisible, setAssignModalVisible] = useState(false)
   const [agentToAssign, setAgentToAssign] = useState<EmployeeAgent | null>(null)
   const [selectedCompanyForAssign, setSelectedCompanyForAssign] = useState<number | undefined>(undefined)
+  const [conceptImageUploadVisible, setConceptImageUploadVisible] = useState(false)
+  const [uploadedConceptImages, setUploadedConceptImages] = useState<Array<{
+    filename: string
+    url: string
+    purpose: string
+  }>>([])
 
   const { data: agentsRes, refetch } = useQuery(
     ['agents', 'mine'],
@@ -249,6 +258,12 @@ const Agents: React.FC = () => {
         artStyle: defaultValues.artStyle,
         gameMode: defaultValues.gameMode,
         additionalRequirements: defaultValues.projectDescription,
+        resourceFiles: uploadedConceptImages.map(img => ({
+          filename: img.filename,
+          type: 'image' as const,
+          purpose: img.purpose,
+          path: img.url, // Use URL as path for uploaded images
+        })),
       }
     }
 
@@ -803,12 +818,14 @@ const Agents: React.FC = () => {
             setPreviewConfirmVisible(false)
             setPendingPreviewAgent(null)
             setTaskNameInput('')
+            setUploadedConceptImages([]) // Reset uploaded images
           }
         }}
         onCancel={() => {
           setPreviewConfirmVisible(false)
           setPendingPreviewAgent(null)
           setTaskNameInput('')
+          setUploadedConceptImages([]) // Reset uploaded images
         }}
         okText="创建任务"
         cancelText="取消"
@@ -832,6 +849,25 @@ const Agents: React.FC = () => {
             <Text style={{ color: '#e8c468' }}>• 游戏类型：RPG</Text>
             <br />
             <Text style={{ color: '#e8c468' }}>• 执行模式：异步（可继续浏览其他页面）</Text>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Text strong style={{ color: '#d4af37' }}>概念图上传（可选）：</Text>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setConceptImageUploadVisible(true)}
+              style={{ marginTop: 8, width: '100%' }}
+            >
+              上传概念图 ({uploadedConceptImages.length} 张)
+            </Button>
+            {uploadedConceptImages.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {uploadedConceptImages.map((img, index) => (
+                  <Tag key={index} color="blue" style={{ marginBottom: 4 }}>
+                    {img.filename} ({img.purpose})
+                  </Tag>
+                ))}
+              </div>
+            )}
           </div>
           <Alert
             type="info"
@@ -1453,6 +1489,24 @@ const Agents: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* 概念图上传模态框 */}
+      <ConceptImageUpload
+        visible={conceptImageUploadVisible}
+        onClose={() => setConceptImageUploadVisible(false)}
+        onSuccess={(imageUrl, category) => {
+          const filename = imageUrl.split('/').pop() || 'concept-image.png'
+          setUploadedConceptImages(prev => [
+            ...prev,
+            {
+              filename,
+              url: imageUrl,
+              purpose: category, // Use category as purpose
+            }
+          ])
+          message.success(`概念图上传成功: ${filename}`)
+        }}
+      />
     </div>
   )
 }

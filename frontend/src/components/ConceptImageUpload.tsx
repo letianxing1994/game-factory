@@ -26,7 +26,7 @@ interface ConceptImageUploadProps {
   companyId?: number
   gameId?: number
   onClose: () => void
-  onSuccess?: (imageUrl: string) => void
+  onSuccess?: (imageUrl: string, category: string) => void
 }
 
 export const ConceptImageUpload: React.FC<ConceptImageUploadProps> = ({
@@ -99,7 +99,7 @@ export const ConceptImageUpload: React.FC<ConceptImageUploadProps> = ({
         setUploadProgress(0)
 
         if (onSuccess && res.data?.url) {
-          onSuccess(res.data.url)
+          onSuccess(res.data.url, values.category || 'general')
         }
 
         onClose()
