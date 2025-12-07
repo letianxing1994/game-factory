@@ -3,6 +3,7 @@ import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { QueryClient, QueryClientProvider } from 'react-query'
 import { AuthProvider } from './contexts/AuthContext'
+import { NotificationProvider } from './contexts/NotificationContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -58,26 +59,28 @@ function App() {
         }}
       >
         <AuthProvider>
-          <Router>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }>
-                <Route index element={<Dashboard />} />
-                <Route path="companies" element={<Companies />} />
-                <Route path="agents" element={<Agents />} />
-                <Route path="games" element={<Games />} />
-                <Route path="market" element={<Market />} />
-                <Route path="community" element={<Community />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="preview-tasks" element={<PreviewTasks />} />
-                <Route path="preview-tasks/:taskId" element={<PreviewTaskDetail />} />
-              </Route>
-            </Routes>
-          </Router>
+          <NotificationProvider>
+            <Router>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<Dashboard />} />
+                  <Route path="companies" element={<Companies />} />
+                  <Route path="agents" element={<Agents />} />
+                  <Route path="games" element={<Games />} />
+                  <Route path="market" element={<Market />} />
+                  <Route path="community" element={<Community />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="preview-tasks" element={<PreviewTasks />} />
+                  <Route path="preview-tasks/:taskId" element={<PreviewTaskDetail />} />
+                </Route>
+              </Routes>
+            </Router>
+          </NotificationProvider>
         </AuthProvider>
       </ConfigProvider>
     </QueryClientProvider>

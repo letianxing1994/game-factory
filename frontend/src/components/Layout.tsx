@@ -17,6 +17,8 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import SailorMoonGuide from './SailorMoonGuide'
+import NotificationButton from './NotificationButton'
+import NotificationModal from './NotificationModal'
 
 const { Header, Sider, Content } = AntLayout
 
@@ -227,9 +229,13 @@ const Layout: React.FC = () => {
           <Outlet />
         </Content>
       </AntLayout>
-      
+
       {/* 水冰月引导组件 */}
       <SailorMoonGuide />
+
+      {/* 通知按钮和模态框 */}
+      <NotificationButton />
+      <NotificationModal />
     </AntLayout>
   )
 }
