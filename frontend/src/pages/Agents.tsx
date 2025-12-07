@@ -1305,7 +1305,33 @@ const Agents: React.FC = () => {
             </Form.Item>
           )}
 
-          {editingAgent?.type && editingAgent.type !== 'artist' && (
+          {editingAgent?.type === 'planner' && (
+            <>
+              <Form.Item
+                name="ai_model"
+                label="LLM模型"
+                tooltip="用于策划文档生成，留空则使用配置文件中的默认模型"
+              >
+                <Select
+                  placeholder="选择LLM模型（可选）"
+                  allowClear
+                  options={aiModelOptions.planner || []}
+                />
+              </Form.Item>
+              <Form.Item
+                name="ai_model_2d"
+                label="2D图像生成模型"
+                tooltip="用于生成游戏概念图"
+              >
+                <Select
+                  placeholder="选择2D模型"
+                  options={aiModelOptions.planner_2d || []}
+                />
+              </Form.Item>
+            </>
+          )}
+
+          {editingAgent?.type && editingAgent.type !== 'artist' && editingAgent.type !== 'planner' && (
             <Form.Item
               name="ai_model"
               label="AI模型"

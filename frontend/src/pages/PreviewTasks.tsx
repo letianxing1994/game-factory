@@ -22,8 +22,9 @@ import {
   SyncOutlined,
   StopOutlined,
   RedoOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
-import { getPreviewTasks, stopPreviewTask, restartPreviewTask } from '../services/previewTasks'
+import { getPreviewTasks, stopPreviewTask, restartPreviewTask, deletePreviewTask } from '../services/previewTasks'
 import type { PreviewTask } from '../types'
 
 const { Title } = Typography
@@ -141,6 +142,19 @@ const PreviewTasks: React.FC = () => {
       refetch()
     } catch (error: any) {
       message.error(error?.response?.data?.message || '重启任务失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    setLoading(true)
+    try {
+      await deletePreviewTask(taskId)
+      message.success('任务已删除')
+      refetch()
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '删除任务失败')
     } finally {
       setLoading(false)
     }
@@ -267,6 +281,26 @@ const PreviewTasks: React.FC = () => {
               loading={loading}
             >
               重启
+            </Button>
+          )}
+          {(record.status === 'completed' || record.status === 'failed') && (
+            <Button
+              type="link"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => {
+                Modal.confirm({
+                  title: '确认删除任务',
+                  content: `确定要删除任务「${record.task_name}」吗？此操作不可恢复。`,
+                  okText: '确认删除',
+                  okType: 'danger',
+                  cancelText: '取消',
+                  onOk: () => handleDeleteTask(record.task_id),
+                })
+              }}
+              loading={loading}
+            >
+              删除
             </Button>
           )}
         </Space>

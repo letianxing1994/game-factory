@@ -103,3 +103,10 @@ export const restartPreviewTask = async (
     {}
   )
 }
+
+/**
+ * 删除预览任务
+ */
+export const deletePreviewTask = async (taskId: string): Promise<ApiResponse<void>> => {
+  return apiClient.delete<ApiResponse<void>>(`/preview-tasks/${taskId}`)
+}
