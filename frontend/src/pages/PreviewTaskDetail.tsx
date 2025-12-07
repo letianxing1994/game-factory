@@ -13,6 +13,9 @@ import {
   Result,
   Divider,
   Timeline,
+  Input,
+  message,
+  Radio,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -22,11 +25,12 @@ import {
   ClockCircleOutlined,
   DownloadOutlined,
   ReloadOutlined,
+  SendOutlined,
 } from '@ant-design/icons'
-import { getPreviewTaskDetail, subscribePreviewTaskStatus } from '../services/previewTasks'
+import { getPreviewTaskDetail, subscribePreviewTaskStatus, submitUserInput } from '../services/previewTasks'
 import type { PreviewTask } from '../types'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 const PreviewTaskDetail: React.FC = () => {
   const { taskId } = useParams<{ taskId: string }>()
@@ -35,6 +39,14 @@ const PreviewTaskDetail: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sseError, setSseError] = useState(false)
+
+  // 用户输入相关状态
+  const [userInputRequired, setUserInputRequired] = useState(false)
+  const [userInputQuestion, setUserInputQuestion] = useState<string>('')
+  const [userInputOptions, setUserInputOptions] = useState<string[]>([])
+  const [userInputGoalId, setUserInputGoalId] = useState<string>('')
+  const [userInputValue, setUserInputValue] = useState<string>('')
+  const [submittingInput, setSubmittingInput] = useState(false)
 
   // 初始加载：只调用一次API获取初始状态
   const loadInitialStatus = async () => {
@@ -74,6 +86,15 @@ const PreviewTaskDetail: React.FC = () => {
         // SSE连接失败，不降级到轮询
         console.error('[PreviewTaskDetail] SSE连接失败，请手动刷新页面获取最新状态:', err)
         setSseError(true)
+      },
+      (data) => {
+        // Agent需要用户输入
+        console.log('[PreviewTaskDetail] 收到用户输入请求:', data)
+        setUserInputRequired(true)
+        setUserInputGoalId(data.goalId)
+        setUserInputQuestion(data.question)
+        setUserInputOptions(data.options || [])
+        setUserInputValue('')
       }
     )
 
@@ -88,6 +109,31 @@ const PreviewTaskDetail: React.FC = () => {
   // 手动刷新状态
   const handleRefresh = () => {
     loadInitialStatus()
+  }
+
+  // 提交用户输入
+  const handleSubmitUserInput = async () => {
+    if (!taskId || !userInputValue.trim()) {
+      message.warning('请输入内容')
+      return
+    }
+
+    try {
+      setSubmittingInput(true)
+      await submitUserInput(taskId, userInputGoalId, userInputValue)
+      message.success('已提交，Agent继续执行中...')
+
+      // 清空输入状态
+      setUserInputRequired(false)
+      setUserInputQuestion('')
+      setUserInputOptions([])
+      setUserInputGoalId('')
+      setUserInputValue('')
+    } catch (err: any) {
+      message.error(err.message || '提交失败')
+    } finally {
+      setSubmittingInput(false)
+    }
   }
 
   const getStatusIcon = (status?: PreviewTask['status']) => {
@@ -375,6 +421,77 @@ const PreviewTaskDetail: React.FC = () => {
       {/* 任务结果 */}
       {task.status === 'completed' && task.result_data && (
         <div>{renderResultData(task.result_data)}</div>
+      )}
+
+      {/* 用户输入对话框 */}
+      {userInputRequired && (
+        <Card
+          title="🤖 Agent等待您的输入"
+          style={{
+            border: '2px solid #1890ff',
+            boxShadow: '0 4px 12px rgba(24, 144, 255, 0.2)',
+          }}
+        >
+          <Alert
+            message="Agent执行到需要您决策的环节"
+            description="请根据问题选择或输入您的答案，Agent将根据您的输入继续执行"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Card size="small" title="问题" style={{ marginBottom: 16 }}>
+            <Paragraph>{userInputQuestion}</Paragraph>
+          </Card>
+
+          {/* 如果有选项，显示单选按钮 */}
+          {userInputOptions.length > 0 ? (
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>请选择：</Text>
+              <Radio.Group
+                value={userInputValue}
+                onChange={(e) => setUserInputValue(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {userInputOptions.map((option, index) => (
+                    <Radio key={index} value={option}>
+                      {option}
+                    </Radio>
+                  ))}
+                </Space>
+              </Radio.Group>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>请输入您的答案：</Text>
+              <Input.TextArea
+                rows={4}
+                placeholder="请输入您的答案..."
+                value={userInputValue}
+                onChange={(e) => setUserInputValue(e.target.value)}
+                onPressEnter={(e) => {
+                  if (!e.shiftKey && userInputValue.trim()) {
+                    handleSubmitUserInput()
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          <div style={{ textAlign: 'right' }}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={handleSubmitUserInput}
+              loading={submittingInput}
+              disabled={!userInputValue.trim()}
+              size="large"
+            >
+              提交并继续执行
+            </Button>
+          </div>
+        </Card>
       )}
     </div>
   )

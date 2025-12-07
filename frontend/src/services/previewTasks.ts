@@ -115,7 +115,8 @@ export const pollPreviewTaskStatus = async (
 export const subscribePreviewTaskStatus = (
   taskId: string,
   onUpdate: (task: PreviewTask) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  onUserInputRequired?: (data: { goalId: string; question: string; options?: string[] }) => void
 ): (() => void) => {
   const eventSource = new EventSource(`/api/preview-tasks/${taskId}/events`)
 
@@ -127,6 +128,16 @@ export const subscribePreviewTaskStatus = (
         // SSE推送的任务状态更新
         if (data.task) {
           onUpdate(data.task)
+        }
+      } else if (data.type === 'user_input_required') {
+        // Agent需要用户输入
+        console.log('[SSE] Agent需要用户输入:', data)
+        if (onUserInputRequired && data.goalId && data.question) {
+          onUserInputRequired({
+            goalId: data.goalId,
+            question: data.question,
+            options: data.options,
+          })
         }
       } else if (data.type === 'error') {
         console.error('SSE Error:', data.message)
@@ -177,4 +188,18 @@ export const restartPreviewTask = async (
  */
 export const deletePreviewTask = async (taskId: string): Promise<ApiResponse<void>> => {
   return apiClient.delete<ApiResponse<void>>(`/preview-tasks/${taskId}`)
+}
+
+/**
+ * 提交用户输入（用于Agent等待用户回答时）
+ */
+export const submitUserInput = async (
+  taskId: string,
+  goalId: string,
+  input: string
+): Promise<ApiResponse<void>> => {
+  return apiClient.post<ApiResponse<void>>(`/preview-tasks/${taskId}/user-input`, {
+    goalId,
+    input,
+  })
 }
