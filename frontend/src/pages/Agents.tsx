@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -159,6 +160,7 @@ const Agents: React.FC = () => {
   const [previewConfirmVisible, setPreviewConfirmVisible] = useState(false)
   const [pendingPreviewAgent, setPendingPreviewAgent] = useState<EmployeeAgent | null>(null)
   const [taskNameInput, setTaskNameInput] = useState<string>('')
+  const [previewAutoExecute, setPreviewAutoExecute] = useState<boolean>(false)
   const [createMode, setCreateMode] = useState<'form' | 'chat'>('form')
   const [conversationalMessages, setConversationalMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([])
   const [conversationalInput, setConversationalInput] = useState('')
@@ -202,7 +204,7 @@ const Agents: React.FC = () => {
   const myCompanies = useMemo(() => companiesRes?.data || [], [companiesRes])
 
   // 异步试运行：创建任务并导航到进度页面
-  const handlePreviewWithDefaults = async (agent: EmployeeAgent, taskName: string) => {
+  const handlePreviewWithDefaults = async (agent: EmployeeAgent, taskName: string, autoExecute: boolean = false) => {
     const stageId = agentStageMap[agent.type] || 'planning'
     const projectName = `${agent.name}的试运行项目`
 
@@ -244,6 +246,7 @@ const Agents: React.FC = () => {
       cloudProvider: 'aliyun',
       stageConfig: {
         mode: 'llm+kb',
+        autoExecute, // 添加自动执行模式
       },
     }
 
@@ -814,10 +817,11 @@ const Agents: React.FC = () => {
             return
           }
           if (pendingPreviewAgent) {
-            handlePreviewWithDefaults(pendingPreviewAgent, taskNameInput)
+            handlePreviewWithDefaults(pendingPreviewAgent, taskNameInput, previewAutoExecute)
             setPreviewConfirmVisible(false)
             setPendingPreviewAgent(null)
             setTaskNameInput('')
+            setPreviewAutoExecute(false)
             setUploadedConceptImages([]) // Reset uploaded images
           }
         }}
@@ -825,6 +829,7 @@ const Agents: React.FC = () => {
           setPreviewConfirmVisible(false)
           setPendingPreviewAgent(null)
           setTaskNameInput('')
+          setPreviewAutoExecute(false)
           setUploadedConceptImages([]) // Reset uploaded images
         }}
         okText="创建任务"
@@ -868,6 +873,22 @@ const Agents: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Space>
+              <Switch
+                checked={previewAutoExecute}
+                onChange={setPreviewAutoExecute}
+                checkedChildren="开启"
+                unCheckedChildren="关闭"
+              />
+              <Text style={{ color: '#e8c468' }}>
+                <Text strong style={{ color: '#d4af37' }}>自动执行模式：</Text>
+                {previewAutoExecute ?
+                  '遇到选项自动随机选择' :
+                  '遇到选项会暂停等待您输入'}
+              </Text>
+            </Space>
           </div>
           <Alert
             type="info"
@@ -1085,6 +1106,18 @@ const Agents: React.FC = () => {
                 </Select.Option>
               ))}
             </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="auto_execute"
+            label="自动执行模式"
+            tooltip="开启后，Agent在执行任务时遇到需要用户选择的环节会自动随机选择，无需等待用户输入"
+            valuePropName="checked"
+          >
+            <Switch
+              checkedChildren="开启"
+              unCheckedChildren="关闭"
+            />
           </Form.Item>
 
           <Alert

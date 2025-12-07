@@ -44,6 +44,7 @@ export interface EmployeeAgent {
   specialization: string;
   extra_traits?: string; // 额外特点
   default_requirements?: string; // 默认需求描述
+  auto_execute?: boolean; // 自动执行模式：遇到选项自动随机选择
   status: 'employed' | 'available';
   owner_id: number;
   company_id?: number;
